@@ -295,6 +295,7 @@
   </div>
 
   <div class="group">
+    <button id="btnPreset" title="Загрузить пресет из preset.json (5 слайд-видео для удержания)">🎬 Пресет</button>
     <button id="btnSave">💾 Сохранить .json</button>
     <button id="btnLoad">📂 Загрузить</button>
     <input id="fileInput" type="file" accept=".json,application/json" style="display:none">
@@ -422,10 +423,19 @@ async function detectAspect(id, tile) {
 
 /* =============== YouTube IFrame API =============== */
 let apiReady = false;
-window.onYouTubeIframeAPIReady = function () {
+let apiPoll = 0;
+function markApiReady() {
+  if (apiReady) return;
   apiReady = true;
+  if (apiPoll) clearInterval(apiPoll);
   attachPlayers();
-};
+}
+window.onYouTubeIframeAPIReady = markApiReady;
+// страховка от гонки: при быстрой (кэшированной) загрузке API колбэк может
+// сработать раньше, чем он определён — тогда подхватываем вручную по поллингу
+apiPoll = setInterval(() => {
+  if (window.YT && YT.Player) markApiReady();
+}, 200);
 
 function attachPlayers() {
   if (FILE_MODE) return;
@@ -895,7 +905,7 @@ function sceneToJSON() {
 }
 
 function applyScene(sc) {
-  if (!sc || !Array.isArray(sc.tiles)) { toast("Неверный формат файла сцены"); return; }
+  if (!sc || !Array.isArray(sc.tiles)) { toast("Неверный формат файла сцены"); return false; }
   state.tiles = sc.tiles
     .filter(t => t && t.id)
     .slice(0, 16)
@@ -920,7 +930,30 @@ function applyScene(sc) {
   // определяем пропорции только для тех, у кого их нет в сцене
   state.tiles.forEach(t => { if (!t.detected) detectAspect(t.id, t); });
   toast("Сцена загружена (" + state.tiles.length + " тайлов)");
+  return true;
 }
+
+/* ---------- Пресет (preset.json рядом с index.html) ---------- */
+async function loadPresetFile(silent) {
+  try {
+    const r = await fetch("preset.json", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const txt = await r.text();
+    let sc;
+    try { sc = JSON.parse(txt); } catch (e) { throw new Error("битый JSON"); }
+    return applyScene(sc);
+  } catch (e) {
+    if (!silent) toast("preset.json не загрузился: " + e.message, 3500);
+    return false;
+  }
+}
+
+document.getElementById("btnPreset").addEventListener("click", async () => {
+  if (FILE_MODE) { toast("Недоступно на file:// — запусти start.bat (localhost)"); return; }
+  if (state.tiles.length && !confirm("Заменить текущую сцену пресетом?")) return;
+  const ok = await loadPresetFile(false);
+  if (ok) toast("Пресет загружен (" + state.tiles.length + " тайлов)");
+});
 
 document.getElementById("btnSave").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(sceneToJSON(), null, 2)], { type: "application/json" });
@@ -998,7 +1031,8 @@ function boot() {
   } catch (e) {}
   syncFitBtn();
   syncFitAllBtn();
-  render();
+  // первый запуск (нет хэша и нет сохранённой сцены) — пробуем preset.json
+  loadPresetFile(true).then(ok => { if (!ok) render(); });
 }
 
 boot();

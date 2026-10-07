@@ -1,0 +1,58 @@
+{
+  "version": 3,
+  "cols": "4",
+  "fit": true,
+  "fitall": true,
+  "tiles": [
+    {
+      "id": "7ghSziUQnhs",
+      "label": "Сабвей Серферс",
+      "start": 0,
+      "loop": true,
+      "muted": true,
+      "rate": 1,
+      "aspect": "auto",
+      "detected": "16/9"
+    },
+    {
+      "id": "wdN89nnLoy4",
+      "label": "Мойка ковров",
+      "start": 0,
+      "loop": true,
+      "muted": true,
+      "rate": 1,
+      "aspect": "auto",
+      "detected": "16/9"
+    },
+    {
+      "id": "Q4MOP8s9KyY",
+      "label": "Нарезка мыла",
+      "start": 0,
+      "loop": true,
+      "muted": true,
+      "rate": 1,
+      "aspect": "auto",
+      "detected": "16/9"
+    },
+    {
+      "id": "prfZFyp4XZk",
+      "label": "Рыбки",
+      "start": 0,
+      "loop": true,
+      "muted": true,
+      "rate": 1,
+      "aspect": "auto",
+      "detected": "16/9"
+    },
+    {
+      "id": "n_Dv4JMiwK8",
+      "label": "Паркур Minecraft",
+      "start": 0,
+      "loop": true,
+      "muted": true,
+      "rate": 1,
+      "aspect": "auto",
+      "detected": "16/9"
+    }
+  ]
+}
