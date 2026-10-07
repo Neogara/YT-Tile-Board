@@ -1,0 +1,7 @@
+# мусор
+gifwork/
+.idea/
+
+# локальные файлы ОС
+Thumbs.db
+.DS_Store
