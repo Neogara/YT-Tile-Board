@@ -824,6 +824,7 @@ btnFit.addEventListener("click", () => {
 const btnFitAll = document.getElementById("btnFitAll");
 function syncFitAllBtn() {
   btnFitAll.classList.toggle("active", state.fitall);
+  document.body.classList.toggle("fitall", state.fitall); // включает CSS overflow:hidden без скролла
 }
 btnFitAll.addEventListener("click", () => {
   state.fitall = !state.fitall;
@@ -995,6 +996,8 @@ function boot() {
     const saved = localStorage.getItem("yttile-scene");
     if (saved) { applyScene(JSON.parse(saved)); return; }
   } catch (e) {}
+  syncFitBtn();
+  syncFitAllBtn();
   render();
 }
 
