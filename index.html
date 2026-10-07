@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YT Tile Board — OBS multi-video scene</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel2: #1f232d;
+    --accent: #ff4e45;
+    --text: #e6e8ec;
+    --dim: #8b919c;
+    --gap: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---------- file:// warning ---------- */
+  #fileWarn {
+    display: none;
+    background: #4a3405;
+    color: #ffd27a;
+    border-bottom: 1px solid #7a5200;
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+  }
+  #fileWarn code { background: #2a2008; padding: 1px 5px; border-radius: 4px; }
+
+  /* ---------- Top bar ---------- */
+  #topbar {
+    background: var(--panel);
+    border-bottom: 1px solid #262b36;
+    padding: 8px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    z-index: 10;
+  }
+  #topbar .logo { font-weight: 700; font-size: 14px; margin-right: 6px; white-space: nowrap; }
+  #topbar .logo span { color: var(--accent); }
+  #addUrl {
+    flex: 1 1 240px;
+    min-width: 160px;
+    padding: 7px 10px;
+    background: var(--panel2);
+    border: 1px solid #333a48;
+    color: var(--text);
+    border-radius: 6px;
+    outline: none;
+  }
+  #addUrl:focus { border-color: var(--accent); }
+  button, select, input[type=text], input[type=number] {
+    padding: 7px 10px;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid #333a48;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  input[type=text], input[type=number] { cursor: text; }
+  button:hover, select:hover { border-color: #4a5263; background: #262b36; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: #ff665e; }
+  button.active { border-color: var(--accent); color: var(--accent); }
+  button:disabled, select:disabled, input:disabled { opacity: .45; cursor: default; }
+  .group { display: flex; gap: 6px; align-items: center; }
+  .group label { font-size: 12px; color: var(--dim); white-space: nowrap; }
+
+  /* ---------- Grid ---------- */
+  #gridWrap {
+    flex: 1;
+    padding: var(--gap);
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+  }
+  body.fit #gridWrap { overflow-y: auto; }
+  body.fitall #gridWrap { overflow: hidden; } /* вписать в экран: без скролла */
+  #scaler { min-height: 100%; transform-origin: top left; }
+  body.uniform #scaler { height: 100%; }
+  #grid {
+    --cols: 2;
+    display: grid;
+    gap: var(--gap);
+    grid-template-columns: repeat(var(--cols), 1fr);
+    width: 100%;
+  }
+  body.uniform #grid { height: 100%; }
+  body.fit #grid { display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; height: auto; }
+  body.fit #grid .tile {
+    width: calc((100% - (var(--cols) - 1) * var(--gap)) / var(--cols));
+    height: auto;
+  }
+  body.fit #grid .video { aspect-ratio: var(--ar, 16/9); }
+
+  /* ---------- Tile ---------- */
+  .tile {
+    position: relative;
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    transition: opacity .15s, filter .15s;
+  }
+  .video {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    transition: outline-color .15s;
+  }
+  .video iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  /* во время drag & drop iframe не должен перехватывать события */
+  body.dnd iframe { pointer-events: none !important; }
+  body.dnd, body.dnd * { cursor: grabbing !important; }
+
+  /* Тайл, который тащат: полупрозрачный, приглушённый */
+  .tile.dragging { opacity: .35; filter: saturate(.5); }
+
+  /* ---------- Подсказка drop на видео ---------- */
+  .tile.drop-target .video { outline-color: var(--accent); }
+  .tile.drop-target .video::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 10px rgba(255, 78, 69, .7);
+    z-index: 5;
+    pointer-events: none;
+  }
+  .tile.drop-before .video::before { left: 3px; }
+  .tile.drop-after .video::before { right: 3px; }
+  /* Цветная заливка видео, куда будет совершено перемещение */
+  .tile.drop-target .video::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 78, 69, .16);
+    z-index: 4;
+    pointer-events: none;
+    transition: background .15s;
+  }
+  /* No-op: тайл уже на этом месте — нейтральная серая индикация */
+  .tile.drop-target.drop-noop .video { outline-color: #8b919c; }
+  .tile.drop-target.drop-noop .video::before { background: #8b919c; box-shadow: none; }
+  .tile.drop-target.drop-noop .video::after { background: rgba(139, 145, 156, .12); }
+
+  /* ---------- Полоска контроллов под видео ---------- */
+  .strip {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    padding: 4px 6px;
+    background: var(--panel);
+    border-top: 1px solid #262b36;
+  }
+  .strip-grip {
+    cursor: grab;
+    user-select: none;
+    color: var(--dim);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1;
+  }
+  .strip-grip:hover { color: var(--text); background: var(--panel2); }
+  .strip-grip:active { cursor: grabbing; }
+  .strip input[type=text] { flex: 1 1 70px; min-width: 50px; padding: 3px 6px; font-size: 11px; }
+  .strip input[type=number] { width: 48px; padding: 3px 4px; font-size: 11px; }
+  .strip select { padding: 3px 4px; font-size: 11px; max-width: 92px; }
+  .strip button { padding: 3px 6px; font-size: 11px; }
+  .strip button.on { border-color: var(--accent); color: var(--accent); }
+  .strip button.danger { border-color: #7a3a3a; color: #ff8a80; }
+  .strip button.danger:hover { background: #3a2020; }
+  body.obs .strip { display: none; }
+
+  /* ---------- Empty state ---------- */
+  #empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    color: var(--dim);
+    text-align: center;
+    padding: 20px;
+    font-size: 14px;
+    line-height: 1.6;
+    pointer-events: none;
+  }
+  #empty code { background: var(--panel2); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* ---------- OBS mode ---------- */
+  body.obs #topbar { display: none; }
+  body.obs #gridWrap { padding: 0; overflow: hidden; }
+  body.obs #grid { gap: 0; }
+  body.obs .tile { border-radius: 0; }
+
+  /* Кнопка выхода из OBS-режима (видна только в нём) */
+  #obsExit {
+    display: none;
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 50;
+    background: rgba(20,22,28,.85);
+    border: 1px solid #3a4150;
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: .6;
+  }
+  #obsExit:hover { opacity: 1; }
+  body.obs #obsExit { display: block; }
+
+  /* ---------- Toast ---------- */
+  #toast {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #22262f;
+    border: 1px solid #3a4150;
+    color: var(--text);
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all .25s;
+    z-index: 99;
+    pointer-events: none;
+    max-width: 80vw;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body class="fit">
+
+<div id="fileWarn">
+  ⚠️ Страница открыта как <code>file://</code> — YouTube IFrame API здесь не работает (ошибка 153).<br>
+  Видео откроются в режиме «только просмотр»: управление из полоски под видео работать не будет.<br>
+  Запусти <code>start.bat</code> рядом и открой <code>http://localhost:8000/index.html</code> — полный функционал.
+</div>
+
+<div id="topbar">
+  <div class="logo">YT<span>▪</span>TileBoard</div>
+  <input id="addUrl" type="text" placeholder="Ссылка на YouTube (или ID видео) → Enter">
+  <button id="btnAdd" class="primary">+ Добавить</button>
+
+  <div class="group">
+    <label>Колонки:</label>
+    <select id="layoutSel">
+      <option value="1">1</option>
+      <option value="2" selected>2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="auto">auto</option>
+    </select>
+    <button id="btnFit" class="active" title="Тайлы точно под пропорции видео (без чёрных полос)">▦ По размеру видео</button>
+    <button id="btnFitAll" title="Масштабировать всю сетку под экран — без скролла, для OBS">▣ Вписать в экран</button>
+  </div>
+
+  <div class="group">
+    <button id="btnSave">💾 Сохранить .json</button>
+    <button id="btnLoad">📂 Загрузить</button>
+    <input id="fileInput" type="file" accept=".json,application/json" style="display:none">
+    <button id="btnCopyUrl">🔗 URL сцены</button>
+    <button id="btnObs">📺 OBS-режим</button>
+    <button id="btnClear">🗑 Очистить</button>
+  </div>
+</div>
+
+<div id="gridWrap">
+  <div id="scaler">
+    <div id="grid"></div>
+  </div>
+  <div id="empty">
+    <div>Добавь YouTube-ссылки сверху — они разложатся тайлами точно под размер видео.</div>
+    <div><code>⠿</code> в полоске под видео — перетащить тайл. Полоска под каждым видео: лейбл, скорость, формат, старт, звук, луп, удаление.</div>
+    <div>Сохрани сцену в <code>.json</code> или скопируй <code>URL сцены</code> для OBS.</div>
+    <div>Для OBS: запусти <code>start.bat</code> → Browser Source на <code>http://localhost:8000/index.html</code> (1920×1080, <code>Refresh browser when scene becomes active</code>, при необходимости — <code>▣ Вписать в экран</code>).</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<button id="obsExit" title="Выйти из OBS-режима">✕ Выход (ESC)</button>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+"use strict";
+
+/* =============== State =============== */
+const FILE_MODE = location.protocol === "file:";
+const state = {
+  cols: "2",
+  fit: true,           // true = тайлы под пропорции видео; false = растянуть на всю ячейку
+  fitall: false,       // true = масштабировать всю сетку под экран (без скролла)
+  tiles: []
+};
+let uidCounter = 1;
+const players = {};    // uid -> YT.Player
+
+const gridWrap = document.getElementById("gridWrap");
+const scaler = document.getElementById("scaler");
+const grid = document.getElementById("grid");
+const emptyEl = document.getElementById("empty");
+
+/* =============== Helpers =============== */
+function toast(msg, ms = 2200) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), ms);
+}
+function needApi() {
+  if (FILE_MODE) { toast("Недоступно на file:// — запусти start.bat (localhost)"); return true; }
+  return false;
+}
+
+function extractId(url) {
+  url = (url || "").trim();
+  if (!url) return null;
+  if (/^[A-Za-z0-9_-]{11}$/.test(url)) return url;
+  try {
+    const u = new URL(url, location.href);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("/")[0] || null;
+    const mShort = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]{11})/);
+    if (mShort) return mShort[1];
+    const mEmbed = u.pathname.match(/\/embed\/([A-Za-z0-9_-]{11})/);
+    if (mEmbed) return mEmbed[1];
+    const v = u.searchParams.get("v");
+    if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+  } catch (e) {}
+  return null;
+}
+
+function iframeSrc(t) {
+  const p = new URLSearchParams({
+    autoplay: "1",
+    mute: t.muted ? "1" : "0",
+    rel: "0",
+    modestbranding: "1"
+  });
+  if (!FILE_MODE) {
+    p.set("enablejsapi", "1");
+    p.set("origin", location.origin);
+  }
+  if (t.start > 0) p.set("start", String(t.start));
+  if (t.loop) { p.set("loop", "1"); p.set("playlist", t.id); }
+  return "https://www.youtube-nocookie.com/embed/" + t.id + "?" + p.toString();
+}
+
+/* ---------- Пропорции видео ---------- */
+function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+function ratioStr(w, h) { const d = gcd(w, h); return (w / d) + "/" + (h / d); }
+function effectiveAspect(t) {
+  return t.aspect === "auto" ? (t.detected || "16/9") : t.aspect;
+}
+// Пытаемся узнать реальные пропорции через YouTube innertube (без ключа, CORS-разрешено)
+async function detectAspect(id, tile) {
+  try {
+    const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: { client: { clientName: "WEB", clientVersion: "2.20250101.00.00" } },
+        videoId: id
+      })
+    });
+    const data = await res.json();
+    const sd = data.streamingData || {};
+    const fmts = (sd.formats || []).concat(sd.adaptiveFormats || []);
+    let best = null;
+    for (const f of fmts) {
+      if (f.width && f.height && (!best || f.width * f.height > best.width * best.height)) best = f;
+    }
+    if (best) {
+      tile.detected = ratioStr(best.width, best.height);
+      const el = grid.querySelector('[data-uid="' + tile.uid + '"]');
+      const video = el && el.querySelector(".video");
+      if (video) video.style.setProperty("--ar", effectiveAspect(tile));
+      requestFitScale();
+    }
+  } catch (e) { /* оставим 16/9 */ }
+}
+
+/* =============== YouTube IFrame API =============== */
+let apiReady = false;
+window.onYouTubeIframeAPIReady = function () {
+  apiReady = true;
+  attachPlayers();
+};
+
+function attachPlayers() {
+  if (FILE_MODE) return;
+  document.querySelectorAll(".tile").forEach(tileEl => {
+    const uid = tileEl.dataset.uid;
+    if (players[uid]) return;
+    const iframe = tileEl.querySelector("iframe");
+    if (!iframe) return;
+    try {
+      players[uid] = new YT.Player(iframe, {
+        events: {
+          onReady: () => {
+            const pl = players[uid];
+            const tile = state.tiles.find(x => x.uid === uid);
+            if (!tile) return;
+            if (tile.muted) pl.mute();
+            if (tile.rate && tile.rate !== 1) { try { pl.setPlaybackRate(tile.rate); } catch (e) {} }
+          },
+          onStateChange: ev => {
+            if (ev.data === YT.PlayerState.PLAYING) {
+              const tile = state.tiles.find(x => x.uid === uid);
+              if (tile && tile.rate && tile.rate !== 1) {
+                try { ev.target.setPlaybackRate(tile.rate); } catch (e) {}
+              }
+            }
+          }
+        }
+      });
+    } catch (e) { /* ignore */ }
+  });
+}
+
+/* =============== Построение тайла =============== */
+function updateEmpty() {
+  emptyEl.style.display = state.tiles.length ? "none" : "flex";
+}
+function render() {
+  grid.innerHTML = "";
+  state.tiles.forEach((t, i) => {
+    const el = buildTile(t);
+    el.style.order = i;
+    grid.appendChild(el);
+  });
+  updateEmpty();
+  applyLayout();
+  if (apiReady) attachPlayers();
+  persistLocal();
+}
+
+function buildTile(t) {
+  const el = document.createElement("div");
+  el.className = "tile";
+  el.dataset.uid = t.uid;
+  el.draggable = true;
+
+  // --- Видео ---
+  const video = document.createElement("div");
+  video.className = "video";
+  video.style.setProperty("--ar", effectiveAspect(t));
+
+  const iframe = document.createElement("iframe");
+  iframe.src = iframeSrc(t);
+  iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+  iframe.setAttribute("allowfullscreen", "");
+  iframe.title = t.label || "video";
+  video.appendChild(iframe);
+  el.appendChild(video);
+
+  // --- Полоска контроллов под видео ---
+  const strip = document.createElement("div");
+  strip.className = "strip";
+
+  // Хэндл перетаскивания
+  const grip = document.createElement("div");
+  grip.className = "strip-grip";
+  grip.textContent = "⠿";
+  grip.draggable = true;
+  grip.title = "Перетащить тайл";
+  grip.addEventListener("dragstart", e => startDrag(e, t.uid));
+  grip.addEventListener("click", e => e.stopPropagation());
+  strip.appendChild(grip);
+
+  // Лейбл
+  const label = document.createElement("input");
+  label.type = "text";
+  label.placeholder = "лейбл";
+  label.value = t.label || "";
+  label.title = "Лейбл тайла";
+  label.addEventListener("input", () => {
+    t.label = label.value;
+    iframe.title = label.value;
+    persistLocal();
+  });
+  strip.appendChild(label);
+
+  // Скорость
+  const rateSel = document.createElement("select");
+  rateSel.title = "Скорость воспроизведения";
+  [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].forEach(r => {
+    const o = document.createElement("option");
+    o.value = r;
+    o.textContent = r + "×";
+    if ((t.rate || 1) === r) o.selected = true;
+    rateSel.appendChild(o);
+  });
+  rateSel.addEventListener("change", () => {
+    if (needApi()) { rateSel.value = String(t.rate || 1); return; }
+    t.rate = parseFloat(rateSel.value);
+    const pl = players[t.uid];
+    if (pl) { try { pl.setPlaybackRate(t.rate); } catch (e) {} }
+    persistLocal();
+  });
+  strip.appendChild(rateSel);
+
+  // Формат
+  const aspSel = document.createElement("select");
+  aspSel.title = "Формат видео";
+  ["auto", "16/9", "9/16", "4/3", "1/1", "21/9"].forEach(a => {
+    const o = document.createElement("option");
+    o.value = a;
+    o.textContent = a === "auto" ? "авто" + (t.detected ? " (" + t.detected + ")" : "") : a.replace("/", ":");
+    if ((t.aspect || "auto") === a) o.selected = true;
+    aspSel.appendChild(o);
+  });
+  aspSel.addEventListener("change", () => {
+    t.aspect = aspSel.value;
+    video.style.setProperty("--ar", effectiveAspect(t));
+    applyLayout();
+    persistLocal();
+  });
+  strip.appendChild(aspSel);
+
+  // Старт
+  const startIn = document.createElement("input");
+  startIn.type = "number";
+  startIn.min = "0";
+  startIn.value = t.start || 0;
+  startIn.title = "Секунда старта (применится после пересоздания тайла)";
+  startIn.addEventListener("change", () => {
+    t.start = Math.max(0, parseInt(startIn.value) || 0);
+    rebuildIframe(el, t);
+    persistLocal();
+  });
+  strip.appendChild(startIn);
+
+  // Звук
+  const muteBtn = document.createElement("button");
+  muteBtn.textContent = t.muted ? "🔇" : "🔊";
+  muteBtn.title = "Звук (mute/unmute)";
+  muteBtn.classList.toggle("on", t.muted);
+  muteBtn.addEventListener("click", () => {
+    if (needApi()) return;
+    t.muted = !t.muted;
+    const pl = players[t.uid];
+    if (pl) { try { t.muted ? pl.mute() : pl.unMute(); } catch (e) {} }
+    muteBtn.textContent = t.muted ? "🔇" : "🔊";
+    muteBtn.classList.toggle("on", t.muted);
+    persistLocal();
+  });
+  strip.appendChild(muteBtn);
+
+  // Луп
+  const loopBtn = document.createElement("button");
+  loopBtn.textContent = "🔁";
+  loopBtn.title = "Зациклить";
+  loopBtn.classList.toggle("on", t.loop);
+  loopBtn.addEventListener("click", () => {
+    t.loop = !t.loop;
+    loopBtn.classList.toggle("on", t.loop);
+    rebuildIframe(el, t);
+    persistLocal();
+  });
+  strip.appendChild(loopBtn);
+
+  // Удаление
+  const delBtn = document.createElement("button");
+  delBtn.textContent = "✕";
+  delBtn.className = "danger";
+  delBtn.title = "Удалить тайл";
+  delBtn.addEventListener("click", () => removeTile(t.uid));
+  strip.appendChild(delBtn);
+
+  el.appendChild(strip);
+
+  el.addEventListener("dragstart", e => startDrag(e, t.uid));
+
+  return el;
+}
+
+function rebuildIframe(tileEl, t) {
+  const video = tileEl.querySelector(".video");
+  if (!video) return;
+  const old = video.querySelector("iframe");
+  if (players[t.uid]) { try { players[t.uid].destroy(); } catch (x) {} delete players[t.uid]; }
+  const f = document.createElement("iframe");
+  f.src = iframeSrc(t);
+  f.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+  f.setAttribute("allowfullscreen", "");
+  f.title = t.label || "video";
+  video.insertBefore(f, video.firstChild);
+  if (old) old.remove();
+  if (apiReady) attachPlayers();
+}
+
+function removeTile(uid) {
+  const t = state.tiles.find(x => x.uid === uid);
+  if (players[uid]) { try { players[uid].destroy(); } catch (x) {} delete players[uid]; }
+  state.tiles = state.tiles.filter(x => x.uid !== uid);
+  const el = grid.querySelector('[data-uid="' + uid + '"]');
+  if (el) el.remove();
+  updateEmpty();
+  requestFitScale();
+  persistLocal();
+  toast("Тайл удалён" + (t ? " «" + (t.label || t.id) + "»" : ""));
+}
+
+/* =============== DnD: вставка до/после тайла под курсором =============== */
+// Подсвечиваем тайл под курсором и полосу на его кромке:
+// левая полоса = «вставить до этого видео», правая = «после этого видео».
+let dragUid = null;
+let draggedEl = null;
+let dropTo = -1; // индекс вставки (в «пост-удалённых» координатах)
+
+function clearDropTargetClasses() {
+  grid.querySelectorAll(".tile.drop-target").forEach(x => {
+    x.classList.remove("drop-target", "drop-before", "drop-after", "drop-noop");
+  });
+}
+
+function clearDropTarget() {
+  dropTo = -1;
+  clearDropTargetClasses();
+}
+
+function setDropTarget(tileEl, before, noop) {
+  clearDropTargetClasses(); // только классы! dropTo уже посчитан — его трогать нельзя
+  if (!tileEl) return;
+  tileEl.classList.add("drop-target", before ? "drop-before" : "drop-after");
+  if (noop) tileEl.classList.add("drop-noop");
+}
+
+function startDrag(e, uid) {
+  dragUid = uid;
+  draggedEl = grid.querySelector('[data-uid="' + uid + '"]');
+  e.dataTransfer.effectAllowed = "move";
+  try { e.dataTransfer.setData("text/plain", uid); } catch (x) {}
+  document.body.classList.add("dnd");
+  clearDropTarget();
+  if (draggedEl) {
+    draggedEl.classList.add("dragging");
+  }
+}
+
+gridWrap.addEventListener("dragover", e => {
+  if (!dragUid) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  let tile = e.target && e.target.closest ? e.target.closest(".tile") : null;
+  if (!tile) {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    tile = el && el.closest ? el.closest(".tile") : null;
+  }
+  if (!tile) return; // над пустым местом (зазоры, фон) — держим последнюю валидную цель
+
+  const draggedT = state.tiles.find(x => x.uid === dragUid);
+  const f = state.tiles.indexOf(draggedT);
+  if (f < 0) { clearDropTarget(); return; }
+
+  if (tile === draggedEl) {
+    // над самим тащим тайлом — дроп без изменений, подсветку убираем
+    clearDropTarget();
+    dropTo = f;
+    return;
+  }
+
+  const hoveredT = state.tiles.find(x => x.uid === tile.dataset.uid);
+  const k = state.tiles.indexOf(hoveredT);
+  if (k < 0) { clearDropTarget(); return; }
+
+  const r = tile.getBoundingClientRect();
+  const before = e.clientX < r.left + r.width / 2;
+
+  // Индекс вставки с учётом того, ОТКУДА тащим:
+  // при удалении тащимого тайла ячейки сдвигаются.
+  dropTo = before
+    ? (f < k ? k - 1 : k)
+    : (f < k ? k : k + 1);
+
+  setDropTarget(tile, before, dropTo === f); // dropTo === f = тайл уже там, дроп ничего не сдвинет
+});
+
+gridWrap.addEventListener("drop", e => {
+  if (!dragUid || dropTo < 0) { clearDropTarget(); return; }
+  e.preventDefault();
+  const from = state.tiles.findIndex(x => x.uid === dragUid);
+  if (from < 0) { clearDropTarget(); return; }
+  const [moved] = state.tiles.splice(from, 1);
+  const to = Math.max(0, Math.min(dropTo, state.tiles.length));
+  state.tiles.splice(to, 0, moved);
+  clearDropTarget();
+  applyOrder();
+  requestFitScale();
+  persistLocal();
+  toast("Порядок обновлён");
+});
+
+document.addEventListener("dragend", () => {
+  dragUid = null;
+  draggedEl = null;
+  clearDropTarget();
+  document.body.classList.remove("dnd");
+  document.querySelectorAll(".tile.dragging").forEach(x => x.classList.remove("dragging"));
+}, true);
+
+/* ---------- Порядок тайлов через CSS order (без перестройки DOM) ---------- */
+function applyOrder() {
+  state.tiles.forEach((t, i) => {
+    const el = grid.querySelector('[data-uid="' + t.uid + '"]');
+    if (el) el.style.order = i;
+  });
+}
+
+/* =============== Layout + «вписать в экран» =============== */
+let fitRaf = 0;
+function requestFitScale() {
+  cancelAnimationFrame(fitRaf);
+  fitRaf = requestAnimationFrame(fitScale);
+}
+
+// Масштабирует всю сетку под доступное пространство (только уменьшение),
+// чтобы в OBS не было скролла и обрезки.
+function fitScale() {
+  if (!state.fitall) {
+    scaler.style.transform = "";
+    scaler.style.width = "";
+    return;
+  }
+  const cs = getComputedStyle(gridWrap);
+  const availW = gridWrap.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  const availH = gridWrap.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+  if (!availW || !availH) return;
+  // меряем естественный размер при полной ширине
+  scaler.style.transform = "none";
+  scaler.style.width = availW + "px";
+  const naturalH = scaler.scrollHeight;
+  let s = 1;
+  if (naturalH > availH) s = Math.max(0.2, availH / naturalH);
+  scaler.style.transform = "scale(" + s + ")";
+}
+
+function applyLayout() {
+  document.body.classList.toggle("fit", state.fit);
+  document.body.classList.toggle("uniform", !state.fit);
+  grid.classList.toggle("fit", state.fit);
+  const n = state.cols;
+  if (n === "auto") {
+    if (state.fit) {
+      const w = gridWrap.clientWidth || window.innerWidth;
+      grid.style.setProperty("--cols", Math.max(1, Math.floor((w + 8) / (300 + 8))));
+      grid.style.gridTemplateColumns = "";
+    } else {
+      grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(300px, 1fr))";
+    }
+  } else {
+    const c = parseInt(n) || 2;
+    grid.style.setProperty("--cols", c);
+    if (!state.fit) grid.style.gridTemplateColumns = "repeat(" + c + ", 1fr)";
+  }
+  state.tiles.forEach(t => {
+    const el = grid.querySelector('[data-uid="' + t.uid + '"]');
+    const video = el && el.querySelector(".video");
+    if (video) video.style.setProperty("--ar", effectiveAspect(t));
+  });
+  requestFitScale();
+}
+window.addEventListener("resize", applyLayout);
+
+document.getElementById("layoutSel").addEventListener("change", e => {
+  state.cols = e.target.value;
+  applyLayout();
+  persistLocal();
+});
+
+const btnFit = document.getElementById("btnFit");
+function syncFitBtn() {
+  btnFit.classList.toggle("active", state.fit);
+  btnFit.textContent = state.fit ? "▦ По размеру видео" : "🧱 Растянуть";
+}
+btnFit.addEventListener("click", () => {
+  state.fit = !state.fit;
+  syncFitBtn();
+  applyLayout();
+  persistLocal();
+});
+
+const btnFitAll = document.getElementById("btnFitAll");
+function syncFitAllBtn() {
+  btnFitAll.classList.toggle("active", state.fitall);
+}
+btnFitAll.addEventListener("click", () => {
+  state.fitall = !state.fitall;
+  syncFitAllBtn();
+  requestFitScale();
+  persistLocal();
+  toast(state.fitall ? "Вписано в экран: сетка масштабируется без скролла" : "Вписывание в экран выключено");
+});
+
+/* =============== Add video =============== */
+function addVideo(raw) {
+  const id = extractId(raw);
+  if (!id) { toast("Не удалось распознать ссылку YouTube"); return; }
+  if (state.tiles.length >= 16) { toast("Максимум 16 тайлов"); return; }
+  const t = {
+    uid: "t" + (uidCounter++) + "_" + Date.now().toString(36),
+    id,
+    label: "",
+    start: 0,
+    loop: false,
+    muted: true,
+    rate: 1,
+    aspect: "auto",
+    detected: null
+  };
+  state.tiles.push(t);
+  const el = buildTile(t);
+  el.style.order = state.tiles.length - 1;
+  grid.appendChild(el); // только новый тайл, остальные не трогаем
+  updateEmpty();
+  applyLayout();
+  if (apiReady) attachPlayers();
+  persistLocal();
+  detectAspect(id, t); // async: обновит пропорции, когда узнает
+  toast("Видео добавлено: " + id);
+}
+
+document.getElementById("btnAdd").addEventListener("click", () => {
+  const inp = document.getElementById("addUrl");
+  addVideo(inp.value);
+  inp.value = "";
+});
+document.getElementById("addUrl").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    addVideo(e.target.value);
+    e.target.value = "";
+  }
+});
+
+/* =============== Save / Load / URL =============== */
+function sceneToJSON() {
+  return {
+    version: 3,
+    cols: state.cols,
+    fit: state.fit,
+    fitall: state.fitall,
+    tiles: state.tiles.map(t => ({
+      id: t.id,
+      label: t.label,
+      start: t.start,
+      loop: t.loop,
+      muted: t.muted,
+      rate: t.rate || 1,
+      aspect: t.aspect || "auto",
+      detected: t.detected || null
+    }))
+  };
+}
+
+function applyScene(sc) {
+  if (!sc || !Array.isArray(sc.tiles)) { toast("Неверный формат файла сцены"); return; }
+  state.tiles = sc.tiles
+    .filter(t => t && t.id)
+    .slice(0, 16)
+    .map(t => ({
+      uid: "t" + (uidCounter++) + "_" + Date.now().toString(36) + Math.floor(Math.random() * 1e4),
+      id: String(t.id).slice(0, 20),
+      label: String(t.label || ""),
+      start: Math.max(0, parseInt(t.start) || 0),
+      loop: !!t.loop,
+      muted: t.muted !== false,
+      rate: parseFloat(t.rate) || 1,
+      aspect: t.aspect || "auto",
+      detected: t.detected || null
+    }));
+  state.cols = String(sc.cols || "2");
+  state.fit = sc.fit !== false;
+  state.fitall = !!sc.fitall;
+  document.getElementById("layoutSel").value = state.cols;
+  syncFitBtn();
+  syncFitAllBtn();
+  render();
+  // определяем пропорции только для тех, у кого их нет в сцене
+  state.tiles.forEach(t => { if (!t.detected) detectAspect(t.id, t); });
+  toast("Сцена загружена (" + state.tiles.length + " тайлов)");
+}
+
+document.getElementById("btnSave").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(sceneToJSON(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "yt-tile-scene.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast("Сцена сохранена в yt-tile-scene.json");
+});
+
+document.getElementById("btnLoad").addEventListener("click", () => document.getElementById("fileInput").click());
+document.getElementById("fileInput").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { applyScene(JSON.parse(r.result)); } catch (err) { toast("Ошибка чтения JSON"); } };
+  r.readAsText(f);
+  e.target.value = "";
+});
+
+const encScene = s => btoa(unescape(encodeURIComponent(s)));
+const decScene = s => decodeURIComponent(escape(atob(s)));
+
+document.getElementById("btnCopyUrl").addEventListener("click", async () => {
+  const url = location.href.split("#")[0] + "#scene=" + encScene(JSON.stringify(sceneToJSON()));
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("URL сцены скопирован в буфер");
+  } catch (e) {
+    prompt("Скопируй URL сцены:", url);
+  }
+});
+
+/* =============== OBS mode / clear =============== */
+function setObsMode(on) {
+  document.body.classList.toggle("obs", on);
+  btnObs.classList.toggle("active", on);
+  btnObs.textContent = on ? "✖ Выход из OBS-режима" : "📺 OBS-режим";
+  requestFitScale();
+}
+const btnObs = document.getElementById("btnObs");
+btnObs.addEventListener("click", () => setObsMode(!document.body.classList.contains("obs")));
+document.getElementById("obsExit").addEventListener("click", () => setObsMode(false));
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && document.body.classList.contains("obs")) setObsMode(false);
+});
+
+document.getElementById("btnClear").addEventListener("click", () => {
+  if (!state.tiles.length) return;
+  if (!confirm("Очистить все тайлы?")) return;
+  Object.values(players).forEach(p => { try { p.destroy(); } catch (x) {} });
+  for (const k in players) delete players[k];
+  state.tiles = [];
+  render();
+  toast("Сцена очищена");
+});
+
+/* =============== Persistence & boot =============== */
+function persistLocal() {
+  try { localStorage.setItem("yttile-scene", JSON.stringify(sceneToJSON())); } catch (e) {}
+}
+
+function boot() {
+  if (FILE_MODE) {
+    document.getElementById("fileWarn").style.display = "block";
+  }
+  const m = location.hash.match(/#scene=([A-Za-z0-9+/=]+)/);
+  if (m) {
+    try { applyScene(JSON.parse(decScene(m[1]))); return; } catch (e) { console.warn("Bad scene hash", e); }
+  }
+  try {
+    const saved = localStorage.getItem("yttile-scene");
+    if (saved) { applyScene(JSON.parse(saved)); return; }
+  } catch (e) {}
+  render();
+}
+
+boot();
+</script>
+</body>
+</html>
