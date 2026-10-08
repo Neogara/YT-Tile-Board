@@ -23,14 +23,22 @@ Paste a bunch of YouTube links, arrange them into a grid, hit **OBS mode** — a
 
 ## Quick start
 
-1. Take `index.html` and `preset.json` (keep them in the same folder).
-2. Run **`start.bat`** (or `node server.js`) → opens `http://localhost:8000`.
-   > YouTube blocks embeds & autoplay on `file://` (error 153). The tiny local server exists exactly for that — it has zero dependencies too.
-3. In OBS: **Sources → + → Browser**
-   - URL: `http://localhost:8000/index.html`
+**🚀 Hosted on GitHub Pages (no install):**
+
+1. In OBS: **Sources → + → Browser**
+   - URL: `https://neogara.github.io/YT-Tile-Board/`
    - Size: **1920 × 1080**
    - ☑ *Refresh browser when scene becomes active*
-4. Click **📺 OBS mode** — all editor chrome disappears, videos fill the scene.
+2. Done — the bundled 5-video preset loads on first visit. No server needed at all.
+
+**🔧 Local run (development / customization):**
+
+1. Take `index.html` and `preset.json` (keep them in the same folder).
+2. Run **`start.bat`** (or `node server.js`) → opens `http://localhost:8000`.
+   > YouTube blocks embeds & autoplay on `file://` (error 153) — open the board through any HTTP server instead; `server.js` is a zero-dependency one.
+3. Point OBS at `http://localhost:8000/index.html` as above.
+
+Either way, click **📺 OBS mode** — all editor chrome disappears, videos fill the scene.
 
 ## Screenshots
 
@@ -89,7 +97,7 @@ Panel state travels with the scene (`allPaused`, `masterMuted`, `volume`, `label
 ## OBS setup tips
 
 - Use **1920×1080** — the board scales, but the layout is designed for 16:9.
-- Keep `server.js` running while streaming (add `start.bat` to startup if the board is permanent).
+- The hosted link needs no server at all; for a local URL keep `server.js` running (add `start.bat` to startup).
 - **📺 OBS mode** hides the editor; the thin top bar (hint + `✕ Выход`) stays *above* the grid so it never covers video.
 - Videos autoplay **muted** (browser policy). Unmute with **🔊** — OBS's CEF respects it; keep master volume ≤ 100 to avoid clipping.
 - `Refresh browser when scene becomes active` re-syncs everything on scene switch.
@@ -98,7 +106,7 @@ Panel state travels with the scene (`allPaused`, `masterMuted`, `volume`, `label
 
 | Symptom | Fix |
 |---|---|
-| Black tiles, **error 153** in console | You opened it via `file://` — run `start.bat` instead |
+| Black tiles, **error 153** in console | You opened it via `file://` — use the hosted link or run `start.bat` |
 | Plaque *Видео недоступно (100/150/101)* | Video is deleted/private or the owner banned embedding — swap the link, the plaque has a delete button |
 | Aspect looks wrong | The automatic probe can fail (CORS) and falls back to 16:9 — pick the format manually in the tile strip |
 | Scene "forgot" itself | State lives in `localStorage`; an URL hash overrides it — check the address bar |
