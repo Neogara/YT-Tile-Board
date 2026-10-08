@@ -1,5 +1,5 @@
 const fs = require("fs");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/../index.html", "utf8");
 const code = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].pop()[1];
 
 let fail = 0;

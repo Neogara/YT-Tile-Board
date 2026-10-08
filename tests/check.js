@@ -1,5 +1,5 @@
 const fs = require("fs");
-const html = fs.readFileSync(__dirname + "/index.html", "utf8");
+const html = fs.readFileSync(__dirname + "/../index.html", "utf8");
 const scripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)];
 if (!scripts.length) { console.log("NO INLINE SCRIPT"); process.exit(1); }
 const code = scripts[scripts.length - 1][1];
