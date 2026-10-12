@@ -481,6 +481,7 @@ const state = {
 };
 let uidCounter = 1;
 let maximizedUid = null; // тайл, открытый во весь экран (клавиши 1..9)
+let maxPauseMap = null;  // снимок «кто играл» до входа в весь экран: uid -> true
 const players = {};    // uid -> YT.Player
 
 const gridWrap = document.getElementById("gridWrap");
@@ -602,7 +603,14 @@ function attachPlayers() {
               pl.setVolume(Math.max(0, Math.min(100, state.volume || 100)));
               if (state.masterMuted || tile.muted) pl.mute(); else pl.unMute();
               if (tile.rate && tile.rate !== 1) pl.setPlaybackRate(tile.rate);
-              if (state.allPaused) pl.pauseVideo();
+              if (state.allPaused) {
+                pl.pauseVideo();
+              } else if (maximizedUid && maximizedUid !== uid) {
+                // открыт полноэкранный тайл — этот ждёт на паузе и проснётся при выходе
+                pl.pauseVideo();
+                if (!maxPauseMap) maxPauseMap = {};
+                maxPauseMap[uid] = true;
+              }
             } catch (e) {}
             hideSkeleton(uid);
           },
@@ -860,7 +868,7 @@ function removeTile(uid) {
   const t = state.tiles.find(x => x.uid === uid);
   if (players[uid]) { try { players[uid].destroy(); } catch (x) {} delete players[uid]; }
   state.tiles = state.tiles.filter(x => x.uid !== uid);
-  if (maximizedUid === uid) maximizedUid = null;
+  if (maximizedUid === uid) { maximizedUid = null; resumeOthersAfterMaximize(); }
   const el = grid.querySelector('[data-uid="' + uid + '"]');
   if (el) el.remove();
   updateEmpty();
@@ -1131,6 +1139,43 @@ volSlider.addEventListener("input", () => {
 volSlider.addEventListener("change", () => persistLocal());
 
 /* ---------- Тайл во весь экран (клавиши 1..9) ---------- */
+// При входе в весь экран: снимаем, кто из остальных играл, и ставим их на паузу
+function pauseOthersForMaximize(uid) {
+  const prev = maxPauseMap; // при быстром переключении 1→2 снимок дополняем, а не теряем
+  const map = {};
+  state.tiles.forEach(t => {
+    if (t.uid === uid) return;
+    const pl = players[t.uid];
+    const wasForced = !!(prev && prev[t.uid]); // эта пауза — из-за нашего «весь экран»
+    let playing = false;
+    if (pl && typeof pl.getPlayerState === "function") {
+      try { const st = pl.getPlayerState(); playing = (st === 1 || st === 3); } catch (e) {}
+    }
+    if (playing) {
+      map[t.uid] = true;
+      try { pl.pauseVideo(); } catch (e) {}
+    } else if (wasForced) {
+      map[t.uid] = true; // уже стоит на паузе из-за нас — оставляем в списке на пробуждение
+    }
+  });
+  maxPauseMap = map;
+}
+
+// При выходе: будим только тех, кто играл до входа (если пользователь не жал Space)
+function resumeOthersAfterMaximize() {
+  if (!maxPauseMap) return;
+  const map = maxPauseMap;
+  maxPauseMap = null;
+  if (state.allPaused) return; // панель в «пауза всех» — не перечим
+  if (needApi()) return;
+  state.tiles.forEach(t => {
+    if (!map[t.uid]) return;
+    const pl = players[t.uid];
+    if (!pl) return;
+    try { pl.playVideo(); } catch (e) {}
+  });
+}
+
 function toggleMaximize(uid) {
   const el = grid.querySelector('[data-uid="' + uid + '"]');
   if (!el) return;
@@ -1138,9 +1183,12 @@ function toggleMaximize(uid) {
   document.querySelectorAll(".tile.maximized").forEach(x => x.classList.remove("maximized"));
   if (wasMax) {
     maximizedUid = null;
+    resumeOthersAfterMaximize();
   } else {
     el.classList.add("maximized");
     maximizedUid = uid;
+    pauseOthersForMaximize(uid);
+    toast("Тайл во весь экран · остальные на паузе");
   }
   // фикс: transform на #scaler ломает position:fixed — пересчитываем масштаб
   requestFitScale();
@@ -1251,6 +1299,9 @@ function applyScene(sc) {
   state.volume = Number.isFinite(+sc.volume) ? Math.max(0, Math.min(100, +sc.volume)) : 100;
   state.masterMuted = !!sc.masterMuted;
   state.allPaused = !!sc.allPaused;
+  // новая сцена — полноэкранный тайл и его пауза не переживают перезагрузку
+  maximizedUid = null;
+  maxPauseMap = null;
   document.getElementById("layoutSel").value = state.cols;
   syncFitBtn();
   syncFitAllBtn();
@@ -1385,6 +1436,7 @@ document.getElementById("btnClear").addEventListener("click", () => {
   for (const k in players) delete players[k];
   state.tiles = [];
   maximizedUid = null;
+  maxPauseMap = null;
   render();
   toast("Сцена очищена");
 });

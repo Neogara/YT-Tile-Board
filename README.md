@@ -66,7 +66,7 @@ Either way, click **📺 OBS mode** — all editor chrome disappears, videos fil
 | `Space` | pause / resume **all** videos |
 | `M` | mute / unmute everything (works in RU layout too) |
 | `F` | fit the whole board to the screen (no scrolling) |
-| `1`–`9` | toggle that tile fullscreen |
+| `1`–`9` | toggle that tile fullscreen — the rest auto-pause and resume when you exit |
 | `Esc` | close fullscreen / leave OBS mode |
 
 Hotkeys are ignored while you're typing in a field. In OBS they work through the source's **Interact** window (right-click source → *Interact*).

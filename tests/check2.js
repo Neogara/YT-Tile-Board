@@ -63,5 +63,18 @@ ok("css: drop-target tint on .video", /\.tile\.drop-target \.video::after/.test(
 ok("css: scaler present", /#scaler \{/.test(html));
 ok("css: fitall kills scroll", /body\.fitall #gridWrap \{ overflow: hidden; \}/.test(html));
 
+// 7. Maximize (1-9) auto-pauses the rest, resumes what was playing
+ok("fn defined: pauseOthersForMaximize", /function\s+pauseOthersForMaximize\s*\(/.test(code));
+ok("fn defined: resumeOthersAfterMaximize", /function\s+resumeOthersAfterMaximize\s*\(/.test(code));
+ok("maxPauseMap declared", /let maxPauseMap = null/.test(code));
+ok("toggleMaximize pauses others on open", /pauseOthersForMaximize\(uid\)/.test(code));
+ok("toggleMaximize resumes others on close", /maximizedUid = null;\s*resumeOthersAfterMaximize\(\)/.test(code));
+ok("onReady pauses late player while maximized", /maximizedUid && maximizedUid !== uid/.test(code));
+ok("removeTile of maximized resumes others", /maximizedUid = null; resumeOthersAfterMaximize\(\)/.test(code));
+ok("applyScene resets maximize state", /maximizedUid = null;\s*maxPauseMap = null;/.test(code));
+ok("btnClear resets maxPauseMap", /state\.tiles = \[\];\s*maximizedUid = null;\s*maxPauseMap = null;/.test(code));
+ok("resume skipped while allPaused", /if \(state\.allPaused\) return;/.test(code));
+ok("only PLAYING/BUFFERING counts as playing", /st === 1 \|\| st === 3/.test(code));
+
 console.log(fail ? `\n${fail} FAILURES` : "\nALL PASSED");
 process.exitCode = fail ? 1 : 0;
