@@ -513,6 +513,8 @@ function extractId(url) {
     if (mShort) return mShort[1];
     const mEmbed = u.pathname.match(/\/embed\/([A-Za-z0-9_-]{11})/);
     if (mEmbed) return mEmbed[1];
+    const mLive = u.pathname.match(/\/live\/([A-Za-z0-9_-]{11})/);
+    if (mLive) return mLive[1];
     const v = u.searchParams.get("v");
     if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
   } catch (e) {}

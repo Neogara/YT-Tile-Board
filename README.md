@@ -82,7 +82,7 @@ Panel state travels with the scene (`allPaused`, `masterMuted`, `volume`, `label
 
 ## Working with the scene
 
-- **Add videos** — paste a link or an 11-char ID → `Enter`. Paste a whole **list** (separated by spaces, newlines, commas or semicolons) and every video is added at once — duplicates are skipped, cap is 16.
+- **Add videos** — paste a link (`watch`, `youtu.be`, `shorts`, `live`, `embed`) or an 11-char ID → `Enter`. Paste a whole **list** (separated by spaces, newlines, commas or semicolons) and every video is added at once — duplicates are skipped, cap is 16.
 - **Reorder** — drag the `⠿` grip on a tile's control strip.
 - **Per-tile strip** under each video:
   - label (becomes the badge over the video),

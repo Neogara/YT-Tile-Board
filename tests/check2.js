@@ -76,5 +76,9 @@ ok("btnClear resets maxPauseMap", /state\.tiles = \[\];\s*maximizedUid = null;\s
 ok("resume skipped while allPaused", /if \(state\.allPaused\) return;/.test(code));
 ok("only PLAYING/BUFFERING counts as playing", /st === 1 \|\| st === 3/.test(code));
 
+// 9. Live stream links: youtube.com/live/ID
+ok("live link parsed: /live/ID", code.includes("/live\\/([A-Za-z0-9_-]{11})/"));
+ok("live id returned", code.includes("if (mLive) return mLive[1];"));
+
 console.log(fail ? `\n${fail} FAILURES` : "\nALL PASSED");
 process.exitCode = fail ? 1 : 0;
