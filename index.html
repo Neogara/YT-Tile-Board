@@ -41,13 +41,25 @@
   /* ---------- Top bar ---------- */
   #topbar {
     background: var(--panel);
-    border-bottom: 1px solid #262b36;
     padding: 8px 12px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
+    flex-direction: column;
+    gap: 6px;
     z-index: 10;
+    position: relative;
+  }
+  .tb-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  /* Тот же разделитель, что отделяет блок массового контроля: строка добавления от блока сцены */
+  #topbar .tb-row:first-child { border-bottom: 1px solid #262b36; padding-bottom: 8px; }
+  #topbar .sep { width: 1px; height: 20px; background: #333a48; }
+  /* Единые разделительные полоски: inset 12px — как под строкой добавления */
+  #topbar::after, #subbar::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    border-bottom: 1px solid #262b36;
   }
   #topbar .logo { font-weight: 700; font-size: 14px; margin-right: 6px; white-space: nowrap; }
   #topbar .logo span { color: var(--accent); }
@@ -83,13 +95,13 @@
   /* ---------- Subbar: общее управление сценой ---------- */
   #subbar {
     background: var(--panel);
-    border-bottom: 1px solid #262b36;
     padding: 6px 12px;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
     z-index: 10;
+    position: relative;
   }
   #subbar .sep { width: 1px; height: 18px; background: #333a48; }
   #subbar .hint { color: var(--dim); font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -402,31 +414,41 @@
 </div>
 
 <div id="topbar">
-  <div class="logo">YT<span>▪</span>TileBoard</div>
-  <input id="addUrl" type="text" placeholder="Ссылка на YouTube (или ID видео) → Enter">
-  <button id="btnAdd" class="primary">+ Добавить</button>
-
-  <div class="group">
-    <label>Колонки:</label>
-    <select id="layoutSel">
-      <option value="1">1</option>
-      <option value="2" selected>2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="auto">auto</option>
-    </select>
-    <button id="btnFit" class="active" title="Тайлы точно под пропорции видео (без чёрных полос)">▦ По размеру видео</button>
-    <button id="btnFitAll" title="Масштабировать всю сетку под экран — без скролла, для OBS">▣ Вписать в экран</button>
+  <!-- Ряд 1: добавление видео -->
+  <div class="tb-row">
+    <div class="logo">YT<span>▪</span>TileBoard</div>
+    <input id="addUrl" type="text" placeholder="Ссылка на YouTube (или ID видео) → Enter">
+    <button id="btnAdd" class="primary">+ Добавить</button>
   </div>
 
-  <div class="group">
-    <button id="btnPreset" title="Загрузить пресет из preset.json (5 слайд-видео для удержания)">🎬 Пресет</button>
-    <button id="btnSave">💾 Сохранить .json</button>
-    <button id="btnLoad">📂 Загрузить</button>
-    <input id="fileInput" type="file" accept=".json,application/json" style="display:none">
-    <button id="btnCopyUrl">🔗 URL сцены</button>
-    <button id="btnObs">📺 OBS-режим</button>
-    <button id="btnClear">🗑 Очистить</button>
+  <!-- Ряд 2: сцена (пресет/файлы/URL) | эфир (OBS-режим/очистка) -->
+  <div class="tb-row">
+    <div class="group">
+      <button id="btnPreset" title="Загрузить пресет из preset.json (5 слайд-видео для удержания)">🎬 Пресет</button>
+      <button id="btnSave">💾 Сохранить .json</button>
+      <button id="btnLoad">📂 Загрузить</button>
+      <input id="fileInput" type="file" accept=".json,application/json" style="display:none">
+      <button id="btnCopyUrl">🔗 URL сцены</button>
+      <div class="sep" title="Сцена ← → Эфир"></div>
+      <button id="btnObs">📺 OBS-режим</button>
+      <button id="btnClear">🗑 Очистить</button>
+    </div>
+  </div>
+
+  <!-- Ряд 3: раскладка сетки -->
+  <div class="tb-row">
+    <div class="group">
+      <label>Колонки:</label>
+      <select id="layoutSel">
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="auto">auto</option>
+      </select>
+      <button id="btnFit" class="active" title="Тайлы точно под пропорции видео (без чёрных полос)">▦ По размеру видео</button>
+      <button id="btnFitAll" title="Масштабировать всю сетку под экран — без скролла, для OBS">▣ Вписать в экран</button>
+    </div>
   </div>
 </div>
 
