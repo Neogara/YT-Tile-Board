@@ -4,7 +4,7 @@
 
 **A multi-video YouTube board for OBS — one HTML file, zero plugins.**
 
-Paste a bunch of YouTube links, arrange them into a grid, hit **OBS mode** — and you get a scene where up to 16 videos play side by side (the preset ships with 5): no black bars, no cropping, no ten separate Browser Sources.
+Paste a bunch of YouTube links, arrange them into a grid, hit **OBS mode** — and you get a scene where up to 15 videos play side by side (the preset ships with 5): no black bars, no cropping, no ten separate Browser Sources.
 
 ![Demo: paste 3 links, board fills up](docs/demo.gif)
 
@@ -82,7 +82,7 @@ Panel state travels with the scene (`allPaused`, `masterMuted`, `volume`, `label
 
 ## Working with the scene
 
-- **Add videos** — paste a link (`watch`, `youtu.be`, `shorts`, `live`, `embed`) or an 11-char ID → `Enter`. Paste a whole **list** (separated by spaces, newlines, commas or semicolons) and every video is added at once — duplicates are skipped, cap is 16.
+- **Add videos** — paste a link (`watch`, `youtu.be`, `shorts`, `live`, `embed`) or an 11-char ID → `Enter`. Paste a whole **list** (separated by spaces, newlines, commas or semicolons) and every video is added at once — duplicates are skipped, cap is 15.
 - **Reorder** — drag the `⠿` grip on a tile's control strip.
 - **Per-tile strip** under each video:
   - label (becomes the badge over the video),
@@ -90,6 +90,7 @@ Panel state travels with the scene (`allPaused`, `masterMuted`, `volume`, `label
   - aspect — `auto` (auto-detected) or fixed `16/9`, `9/16`, `4/3`, `1/1`, `21/9`,
   - start offset (seconds), mute, loop, delete.
 - **Layout** — columns `1`–`4` or `auto` (picks the count by window width), **По размеру видео** (tiles hug aspect ratios → no bars) or stretch, **Вписать в экран** (scale everything to fit, no scroll).
+- **⭐ Hero layout** — pick `⭐ Герой` in Columns: one big video in the center, the rest ring around it (up to 4 top → 4 bottom, then left/right filling in turn — 3 each — then the next ring, smaller). Mark any tile as hero with its `⭐`, or drag a tile onto the hero slot to swap it in.
 - **Save & share**
   - **💾 Сохранить .json** / **📂 Загрузить** — scene files;
   - **drag & drop a `.json` anywhere on the page** — loads it;

@@ -41,7 +41,7 @@
   /* ---------- Top bar ---------- */
   #topbar {
     background: var(--panel);
-    padding: 8px 12px;
+    padding: 8px 12px 0;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -53,7 +53,7 @@
   #topbar .tb-row:first-child { border-bottom: 1px solid #262b36; padding-bottom: 8px; }
   #topbar .sep { width: 1px; height: 20px; background: #333a48; }
   /* Единые разделительные полоски: inset 12px — как под строкой добавления */
-  #topbar::after, #subbar::after {
+  #subbar::after {
     content: "";
     position: absolute;
     left: 12px;
@@ -89,8 +89,29 @@
   button.primary:hover { background: #ff665e; }
   button.active { border-color: var(--accent); color: var(--accent); }
   button:disabled, select:disabled, input:disabled { opacity: .45; cursor: default; }
-  .group { display: flex; gap: 6px; align-items: center; }
+  .group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .group label { font-size: 12px; color: var(--dim); white-space: nowrap; }
+  /* Наименование блока контролов: компактный маркер в одну строку с кнопками */
+  .group-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: 66px;
+    box-sizing: border-box;
+    padding-right: 9px;
+    border-right: 1px solid #333a48;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .group-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
   /* ---------- Subbar: общее управление сценой ---------- */
   #subbar {
@@ -135,6 +156,14 @@
     height: auto;
   }
   body.fit #grid .video { aspect-ratio: var(--ar, 16/9); }
+
+  /* ---------- Раскладка «Герой»: большое видео по центру, спутники кольцом ---------- */
+  body.hero #grid { display: grid; height: 100%; align-items: stretch; }
+  body.hero #scaler { height: 100%; }
+  body.hero #grid .tile { width: auto; height: auto; } /* геометрию задаёт grid-area */
+  body.hero.fit #grid .video { aspect-ratio: auto; } /* видео заполняет клетку, letterbox делает YouTube */
+  body:not(.obs) .tile.hero-main { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tile.drop-hero .video { outline-color: var(--accent); }
 
   /* ---------- Tile ---------- */
   .tile {
@@ -421,46 +450,57 @@
     <button id="btnAdd" class="primary">+ Добавить</button>
   </div>
 
-  <!-- Ряд 2: сцена (пресет/файлы/URL) | эфир (OBS-режим/очистка) -->
+  <!-- Ряд 2: сцена (пресет/файлы/URL | OBS-режим/очистка) -->
   <div class="tb-row">
     <div class="group">
-      <button id="btnPreset" title="Загрузить пресет из preset.json (5 слайд-видео для удержания)">🎬 Пресет</button>
-      <button id="btnSave">💾 Сохранить .json</button>
-      <button id="btnLoad">📂 Загрузить</button>
-      <input id="fileInput" type="file" accept=".json,application/json" style="display:none">
-      <button id="btnCopyUrl">🔗 URL сцены</button>
-      <div class="sep" title="Сцена ← → Эфир"></div>
-      <button id="btnObs">📺 OBS-режим</button>
-      <button id="btnClear">🗑 Очистить</button>
+      <div class="group-name">Сцена</div>
+      <div class="group-controls">
+        <button id="btnPreset" title="Загрузить пресет из preset.json (5 слайд-видео для удержания)">🎬 Пресет</button>
+        <button id="btnSave">💾 Сохранить сцену</button>
+        <button id="btnLoad">📂 Загрузить сцену</button>
+        <input id="fileInput" type="file" accept=".json,application/json" style="display:none">
+        <button id="btnCopyUrl">🔗 Получить URL сцены</button>
+        <div class="sep"></div>
+        <button id="btnObs">📺 OBS-режим</button>
+        <button id="btnClear">🗑 Очистить</button>
+      </div>
     </div>
   </div>
 
   <!-- Ряд 3: раскладка сетки -->
   <div class="tb-row">
     <div class="group">
-      <label>Колонки:</label>
-      <select id="layoutSel">
-        <option value="1">1</option>
-        <option value="2" selected>2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="auto">auto</option>
-      </select>
-      <button id="btnFit" class="active" title="Тайлы точно под пропорции видео (без чёрных полос)">▦ По размеру видео</button>
-      <button id="btnFitAll" title="Масштабировать всю сетку под экран — без скролла, для OBS">▣ Вписать в экран</button>
+      <div class="group-name">Сетка</div>
+      <div class="group-controls">
+        <select id="layoutSel">
+          <option value="1">1 колонка</option>
+          <option value="2" selected>2 колонки</option>
+          <option value="3">3 колонки</option>
+          <option value="4">4 колонки</option>
+          <option value="auto">auto</option>
+          <option value="hero">⭐ Герой</option>
+        </select>
+        <button id="btnFit" class="active" title="Тайлы точно под пропорции видео (без чёрных полос)">▦ По размеру видео</button>
+        <button id="btnFitAll" title="Масштабировать всю сетку под экран — без скролла, для OBS">▣ Вписать в экран</button>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="subbar">
-  <button id="btnPlayAll" title="Пауза/пуск всех видео (Space)">⏸ Пауза</button>
-  <button id="btnMuteAll" title="Звук/мьют всех видео (M)">🔇 Звук</button>
-  <div class="sep"></div>
-  <label for="volSlider">Громкость:</label>
-  <input id="volSlider" type="range" min="0" max="100" value="100" title="Общая громкость всех видео">
-  <span id="volVal">100</span>
-  <div class="sep"></div>
-  <button id="btnLabels" class="active" title="Подписи названий поверх видео (в том числе в OBS-режиме)">🏷 Подписи</button>
+  <div class="group">
+    <div class="group-name">Видео</div>
+    <div class="group-controls">
+      <button id="btnPlayAll" title="Пауза/пуск всех видео (Space)">⏸ Пауза</button>
+      <button id="btnMuteAll" title="Звук/мьют всех видео (M)">🔇 Звук</button>
+      <div class="sep"></div>
+      <label for="volSlider">Громкость:</label>
+      <input id="volSlider" type="range" min="0" max="100" value="100" title="Общая громкость всех видео">
+      <span id="volVal">100</span>
+      <div class="sep"></div>
+      <button id="btnLabels" class="active" title="Подписи названий поверх видео (в том числе в OBS-режиме)">🏷 Подписи</button>
+    </div>
+  </div>
   <div class="hint">Клавиши: Space — пауза всех · M — звук · F — вписать · 1–9 — тайл во весь экран · Esc — выход</div>
 </div>
 
@@ -852,6 +892,15 @@ function buildTile(t) {
   });
   strip.appendChild(loopBtn);
 
+  // Герой — главное видео раскладки «Герой»
+  const heroBtn = document.createElement("button");
+  heroBtn.textContent = "⭐";
+  heroBtn.className = "hero-star";
+  heroBtn.title = "Сделать главным видео (раскладка «Герой»)";
+  heroBtn.classList.toggle("on", !!t.hero);
+  heroBtn.addEventListener("click", () => setHero(t.uid));
+  strip.appendChild(heroBtn);
+
   // Удаление
   const delBtn = document.createElement("button");
   delBtn.textContent = "✕";
@@ -896,6 +945,7 @@ function removeTile(uid) {
   const el = grid.querySelector('[data-uid="' + uid + '"]');
   if (el) el.remove();
   updateEmpty();
+  applyLayout(); // в раскладке «Герой» кольцо ужимается под новое число тайлов
   requestFitScale();
   persistLocal();
   toast("Тайл удалён" + (t ? " «" + (t.label || t.id) + "»" : ""));
@@ -907,6 +957,7 @@ function removeTile(uid) {
 let dragUid = null;
 let draggedEl = null;
 let dropTo = -1; // индекс вставки (в «пост-удалённых» координатах)
+let dropOnHeroUid = null; // дроп на тайл-герой = «сменить героя» (только в раскладке «Герой»)
 
 function clearDropTargetClasses() {
   grid.querySelectorAll(".tile.drop-target").forEach(x => {
@@ -916,6 +967,7 @@ function clearDropTargetClasses() {
 
 function clearDropTarget() {
   dropTo = -1;
+  dropOnHeroUid = null;
   clearDropTargetClasses();
 }
 
@@ -964,6 +1016,16 @@ gridWrap.addEventListener("dragover", e => {
   const k = state.tiles.indexOf(hoveredT);
   if (k < 0) { clearDropTarget(); return; }
 
+  // Над тайлом-героем — цель «сменить героя»: дроп меняет тайлы местами, ⭐ уходит drопнутому
+  const heroEl = grid.querySelector(".tile.hero-main");
+  if (heroEl && tile === heroEl && tile !== draggedEl) {
+    clearDropTargetClasses();
+    tile.classList.add("drop-target", "drop-hero");
+    dropOnHeroUid = tile.dataset.uid;
+    dropTo = f; // generic-ветка дропа при этом ничего не двигает
+    return;
+  }
+
   const r = tile.getBoundingClientRect();
   const before = e.clientX < r.left + r.width / 2;
 
@@ -981,11 +1043,33 @@ gridWrap.addEventListener("drop", e => {
   e.preventDefault();
   const from = state.tiles.findIndex(x => x.uid === dragUid);
   if (from < 0) { clearDropTarget(); return; }
+
+  // Дроп на слот героя: тайлы меняются местами, ⭐ переходит drопнутому
+  if (dropOnHeroUid && dragUid !== dropOnHeroUid) {
+    const to = state.tiles.findIndex(x => x.uid === dropOnHeroUid);
+    if (to >= 0 && to !== from) {
+      const tmp = state.tiles[from];
+      state.tiles[from] = state.tiles[to];
+      state.tiles[to] = tmp;
+      state.tiles.forEach(x => { x.hero = false; });
+      state.tiles[to].hero = true; // перетащенный встал в слот героя — он и главный
+    }
+    clearDropTarget();
+    applyOrder();
+    applyLayout();
+    requestFitScale();
+    persistLocal();
+    syncHeroStars();
+    toast("⭐ Главное видео: " + (state.tiles[from] ? (state.tiles[from].label || state.tiles[from].id) : ""));
+    return;
+  }
+
   const [moved] = state.tiles.splice(from, 1);
   const to = Math.max(0, Math.min(dropTo, state.tiles.length));
   state.tiles.splice(to, 0, moved);
   clearDropTarget();
   applyOrder();
+  if (state.cols === "hero") applyLayout(); // порядок спутников в кольце = порядок в сцене
   requestFitScale();
   persistLocal();
   toast("Порядок обновлён");
@@ -1040,20 +1124,31 @@ function fitScale() {
 function applyLayout() {
   document.body.classList.toggle("fit", state.fit);
   document.body.classList.toggle("uniform", !state.fit);
+  document.body.classList.toggle("hero", state.cols === "hero");
   grid.classList.toggle("fit", state.fit);
   const n = state.cols;
-  if (n === "auto") {
-    if (state.fit) {
-      const w = gridWrap.clientWidth || window.innerWidth;
-      grid.style.setProperty("--cols", Math.max(1, Math.floor((w + 8) / (300 + 8))));
-      grid.style.gridTemplateColumns = "";
-    } else {
-      grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(300px, 1fr))";
-    }
+  if (n === "hero") {
+    applyHeroLayout();
   } else {
-    const c = parseInt(n) || 2;
-    grid.style.setProperty("--cols", c);
-    if (!state.fit) grid.style.gridTemplateColumns = "repeat(" + c + ", 1fr)";
+    // чистим следы «Героя»: явные позиции и метку центрального тайла
+    state.tiles.forEach(t => {
+      const el = grid.querySelector('[data-uid="' + t.uid + '"]');
+      if (el) { el.style.gridArea = ""; el.classList.remove("hero-main"); }
+    });
+    grid.style.gridTemplateRows = "";
+    if (n === "auto") {
+      if (state.fit) {
+        const w = gridWrap.clientWidth || window.innerWidth;
+        grid.style.setProperty("--cols", Math.max(1, Math.floor((w + 8) / (300 + 8))));
+        grid.style.gridTemplateColumns = "";
+      } else {
+        grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(300px, 1fr))";
+      }
+    } else {
+      const c = parseInt(n) || 2;
+      grid.style.setProperty("--cols", c);
+      if (!state.fit) grid.style.gridTemplateColumns = "repeat(" + c + ", 1fr)";
+    }
   }
   state.tiles.forEach(t => {
     const el = grid.querySelector('[data-uid="' + t.uid + '"]');
@@ -1063,6 +1158,123 @@ function applyLayout() {
   requestFitScale();
 }
 window.addEventListener("resize", applyLayout);
+
+/* =============== Раскладка «Герой» =============== */
+// Детерминированная раскладка: герой в центре, спутники кладём по кругу —
+// до 4 сверху, до 4 снизу, до 3 слева, до 3 справа; затем следующий слой
+// (снова сверху, но меньше) и т.д. Порядок спутников = порядок в сцене.
+// Сетка мелкая и кратная 12: HERO_C=12, SIDE_W=4 на слой лево/право.
+// Тогда cols = 4·(leftL+rightL) + 12 = 4·(слои+3) — всегда кратно 4, а 12 длит-
+// ся на 3 и 4 без остатка. Верх/низ (1–4 видео) и лево/право делятся ровно.
+function heroPlacements(S) {
+  const topCap = 4, bottomCap = 4, leftCap = 3, rightCap = 3;
+  const HERO_C = 12, HERO_R = 3, SIDE_W = 4;
+  const PER = topCap + bottomCap + leftCap + rightCap; // 14 спутников на полный слой
+  const bySide = { top: [], bottom: [], left: [], right: [] };
+  for (let i = 0; i < S; i++) {
+    const layer = Math.floor(i / PER);
+    const w = i % PER;
+    let side, pos;
+    if (w < topCap) { side = "top"; pos = w; }
+    else if (w < topCap + bottomCap) { side = "bottom"; pos = w - topCap; }
+    else {
+      // лево/право — поочерёдно (L,R,L,R…), чтобы стороны заполнялись плавно
+      // (при leftCap === rightCap чередование даёт ровно по pos на сторону)
+      const k = w - topCap - bottomCap; // 0..(leftCap+rightCap-1)
+      if (k % 2 === 0) { side = "left"; pos = k / 2; }
+      else { side = "right"; pos = (k - 1) / 2; }
+    }
+    bySide[side].push({ i, layer, pos });
+  }
+  const nLayers = a => a.length ? Math.max(...a.map(x => x.layer)) + 1 : 0;
+  const topL = nLayers(bySide.top), bottomL = nLayers(bySide.bottom);
+  const leftL = nLayers(bySide.left), rightL = nLayers(bySide.right);
+  const cols = leftL * SIDE_W + HERO_C + rightL * SIDE_W;
+  const rows = topL + HERO_R + bottomL;
+  const hr1 = topL + 1, hr2 = hr1 + HERO_R; // строки, занятые героем [hr1..hr2)
+  const A = (c1, r1, c2, r2) => r1 + " / " + c1 + " / " + r2 + " / " + c2;
+  // разделить total на n почти равных куска (остаток — в первые)
+  const spans = (n, total) => {
+    const base = Math.floor(total / n);
+    let rem = total - base * n;
+    const out = [];
+    for (let k = 0; k < n; k++) { out.push(base + (rem > 0 ? 1 : 0)); if (rem > 0) rem--; }
+    return out;
+  };
+  const areas = new Array(S).fill("");
+  // верх/низ: слой L (0 — ближе к герою) = строка на всю ширину, видео делят ширину
+  ["top", "bottom"].forEach(side => {
+    const lay = side === "top" ? topL : bottomL;
+    for (let L = 0; L < lay; L++) {
+      const items = bySide[side].filter(x => x.layer === L).sort((a, b) => a.pos - b.pos);
+      const row = side === "top" ? (topL - L) : (hr2 + L);
+      const ws = spans(items.length, cols);
+      let c = 1;
+      items.forEach((x, k) => { areas[x.i] = A(c, row, c + ws[k], row + 1); c += ws[k]; });
+    }
+  });
+  // лево/право: слой L = колонка рядом с героем (SIDE_W шириной), видео делят высоту героя
+  ["left", "right"].forEach(side => {
+    const lay = side === "left" ? leftL : rightL;
+    for (let L = 0; L < lay; L++) {
+      const items = bySide[side].filter(x => x.layer === L).sort((a, b) => a.pos - b.pos);
+      const c1 = side === "left"
+        ? ((leftL - 1 - L) * SIDE_W + 1)
+        : (leftL * SIDE_W + HERO_C + L * SIDE_W + 1);
+      const hs = spans(items.length, HERO_R);
+      let r = hr1;
+      items.forEach((x, k) => { areas[x.i] = A(c1, r, c1 + SIDE_W, r + hs[k]); r += hs[k]; });
+    }
+  });
+  return { cols, rows, areas, heroArea: A(leftL * SIDE_W + 1, hr1, leftL * SIDE_W + 1 + HERO_C, hr2) };
+}
+
+// Ставим тайлы по сетке из heroPlacements: герой — в центральный блок, спутники
+// кольцом в порядке сцены. Если никто не помечен ⭐ — герой = первый тайл.
+function applyHeroLayout() {
+  const tiles = state.tiles;
+  if (!tiles.length) return;
+  let heroIdx = tiles.findIndex(t => t.hero);
+  if (heroIdx < 0) { tiles[0].hero = true; heroIdx = 0; } // всегда есть герой
+  const hero = tiles[heroIdx];
+  const sats = tiles.filter((t, i) => i !== heroIdx);
+  const spec = heroPlacements(sats.length);
+  grid.style.gridTemplateColumns = "repeat(" + spec.cols + ", 1fr)";
+  grid.style.gridTemplateRows = "repeat(" + spec.rows + ", 1fr)";
+  const place = (t, area, isHero) => {
+    const el = grid.querySelector('[data-uid="' + t.uid + '"]');
+    if (!el) return;
+    el.style.gridArea = area;
+    el.classList.toggle("hero-main", !!isHero);
+  };
+  sats.forEach((t, i) => place(t, spec.areas[i], false));
+  place(hero, spec.heroArea, true);
+  syncHeroStars(); // звезда в полоске — у фактического героя
+}
+
+// ⭐ в полосках: подсветить звезду у текущего героя (и только у него)
+function syncHeroStars() {
+  grid.querySelectorAll(".strip .hero-star").forEach(b => {
+    const el = b.closest(".tile");
+    const tt = state.tiles.find(x => x.uid === (el && el.dataset.uid));
+    b.classList.toggle("on", !!(tt && tt.hero));
+  });
+}
+
+// Пометить тайл главным: ⭐ уходит на него, кольцо пересобирается
+function setHero(uid) {
+  state.tiles.forEach(x => { x.hero = x.uid === uid; });
+  // клик «главное видео» сразу переводит раскладку в «Герой»
+  if (state.cols !== "hero") {
+    state.cols = "hero";
+    document.getElementById("layoutSel").value = "hero";
+  }
+  syncHeroStars();
+  applyLayout();
+  persistLocal();
+  const t = state.tiles.find(x => x.uid === uid);
+  toast("⭐ Главное видео: " + (t ? (t.label || t.id) : ""));
+}
 
 document.getElementById("layoutSel").addEventListener("change", e => {
   state.cols = e.target.value;
@@ -1222,7 +1434,7 @@ function toggleMaximize(uid) {
 function addVideo(raw) {
   const id = extractId(raw);
   if (!id) { toast("Не удалось распознать ссылку YouTube"); return; }
-  if (state.tiles.length >= 16) { toast("Максимум 16 тайлов"); return; }
+  if (state.tiles.length >= 15) { toast("Максимум 15 тайлов"); return; }
   const t = {
     uid: "t" + (uidCounter++) + "_" + Date.now().toString(36),
     id,
@@ -1267,7 +1479,7 @@ document.getElementById("addUrl").addEventListener("paste", e => {
   e.preventDefault();
   let added = 0, skipped = 0;
   for (const id of ids) {
-    if (state.tiles.length >= 16) { skipped++; continue; }
+    if (state.tiles.length >= 15) { skipped++; continue; }
     if (state.tiles.some(t => t.id === id)) { skipped++; continue; }
     addVideo(id);
     added++;
@@ -1294,7 +1506,8 @@ function sceneToJSON() {
       muted: t.muted,
       rate: t.rate || 1,
       aspect: t.aspect || "auto",
-      detected: t.detected || null
+      detected: t.detected || null,
+      hero: t.hero || undefined
     }))
   };
 }
@@ -1303,7 +1516,7 @@ function applyScene(sc) {
   if (!sc || !Array.isArray(sc.tiles)) { toast("Неверный формат файла сцены"); return false; }
   state.tiles = sc.tiles
     .filter(t => t && t.id)
-    .slice(0, 16)
+    .slice(0, 15)
     .map(t => ({
       uid: "t" + (uidCounter++) + "_" + Date.now().toString(36) + Math.floor(Math.random() * 1e4),
       id: String(t.id).slice(0, 20),
@@ -1313,8 +1526,13 @@ function applyScene(sc) {
       muted: t.muted !== false,
       rate: parseFloat(t.rate) || 1,
       aspect: t.aspect || "auto",
-      detected: t.detected || null
+      detected: t.detected || null,
+      hero: !!t.hero
     }));
+  // ровно один герой: первый помеченный, иначе — первый тайл
+  let seenHero = false;
+  state.tiles.forEach(t => { if (t.hero) { if (seenHero) t.hero = false; else seenHero = true; } });
+  if (state.tiles.length && !seenHero) state.tiles[0].hero = true;
   state.cols = String(sc.cols || "2");
   state.fit = sc.fit !== false;
   state.fitall = !!sc.fitall;
