@@ -32,29 +32,40 @@ for (const field of ["fitall: state.fitall", "detected: t.detected || null", "ra
   ok(`scene field: ${field}`, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(code));
 }
 
-// 5. Drop index math regression simulation (formula from the working build)
-const insertIndex = (n, f, k, before) => before ? (f < k ? k - 1 : k) : (f < k ? k : k + 1);
-const simulate = (arr, f, k, before) => {
+// 5. Drop = обмен тайлов местами (симуляция механики из приложения)
+const swap = (arr, f, k) => {
+  if (f === k) return arr.slice();
   const copy = arr.slice();
-  const moved = copy.splice(f, 1)[0];
-  const to = Math.max(0, Math.min(insertIndex(arr.length, f, k, before), copy.length));
-  copy.splice(to, 0, moved);
+  [copy[f], copy[k]] = [copy[k], copy[f]];
   return copy;
 };
 const arr = ["A", "B", "C", "D"];
-// drag A (idx0) before C (idx2) -> dropTo=1 -> [B,A,C,D]
-ok("dnd: A before C", JSON.stringify(simulate(arr, 0, 2, true)) === JSON.stringify(["B", "A", "C", "D"]));
-// drag D (idx3) before A (idx0) -> dropTo=0 -> [D,A,B,C]
-ok("dnd: D before A", JSON.stringify(simulate(arr, 3, 0, true)) === JSON.stringify(["D", "A", "B", "C"]));
-// drag A (idx0) after D (idx3) -> dropTo=3 -> [B,C,D,A]
-ok("dnd: A after D", JSON.stringify(simulate(arr, 0, 3, false)) === JSON.stringify(["B", "C", "D", "A"]));
-// drag C (idx2) after A (idx0) -> dropTo=1 -> [A,C,B,D]
-ok("dnd: C after A", JSON.stringify(simulate(arr, 2, 0, false)) === JSON.stringify(["A", "C", "B", "D"]));
-// true no-ops: drop back into own slot -> unchanged (matches dropTo === f in app)
-ok("dnd: B before C (no-op, own slot)", JSON.stringify(simulate(arr, 1, 2, true)) === JSON.stringify(arr));
-ok("dnd: B after A (no-op, own slot)", JSON.stringify(simulate(arr, 1, 0, false)) === JSON.stringify(arr));
-// sanity: B after C must actually move B -> [A,C,B,D]
-ok("dnd: B after C (moves)", JSON.stringify(simulate(arr, 1, 2, false)) === JSON.stringify(["A", "C", "B", "D"]));
+// drag A (idx0) на C (idx2) -> [C,B,A,D]
+ok("dnd: A на C", JSON.stringify(swap(arr, 0, 2)) === JSON.stringify(["C", "B", "A", "D"]));
+// drag D (idx3) на B (idx1) -> [A,D,C,B]
+ok("dnd: D на B", JSON.stringify(swap(arr, 3, 1)) === JSON.stringify(["A", "D", "C", "B"]));
+// drag A (idx0) на B (idx1) -> [B,A,C,D]
+ok("dnd: A на B", JSON.stringify(swap(arr, 0, 1)) === JSON.stringify(["B", "A", "C", "D"]));
+// drag C (idx2) на D (idx3) -> [A,B,D,C]
+ok("dnd: C на D", JSON.stringify(swap(arr, 2, 3)) === JSON.stringify(["A", "B", "D", "C"]));
+// дроп на себя -> без изменений
+ok("dnd: B на себя (no-op)", JSON.stringify(swap(arr, 1, 1)) === JSON.stringify(arr));
+// симметричность: A на D == D на A
+ok("dnd: симметричность обмена",
+  JSON.stringify(swap(arr, 0, 3)) === JSON.stringify(swap(arr, 3, 0)));
+// маркеры самой механики в коде/CSS
+ok("dnd: drop = swap в state.tiles",
+  /const tmp = state\.tiles\[from\];[\s\S]{0,80}state\.tiles\[to\] = tmp;/.test(code));
+ok("dnd: цель-обменник dropOnUid", /let dropOnUid = null/.test(code));
+ok("dnd: старая вставки-со-сдвигом вычищена",
+  !/drop-before|drop-after|drop-noop|setDropTarget/.test(code) &&
+  !/drop-before|drop-after|drop-noop/.test(html));
+ok("dnd: тост «Видео поменялись местами»", code.includes("Видео поменялись местами"));
+ok("dnd: плашка ⇄ по центру цели", /\.tile\.drop-target \.video::before \{\s*content: "⇄"/.test(html));
+ok("dnd: плашка ⭐ для слота героя", /\.tile\.drop-hero \.video::before \{ content: "⭐"; \}/.test(html));
+ok("dnd: обводка цели — на pseudo-слое выше iframe (иначе её перекрывает плеер)",
+  /\.tile\.drop-target \.video::after \{[\s\S]*?outline: 2px solid var\(--accent\)[\s\S]*?z-index: 4/.test(html) &&
+  !/\.tile\.drop-target \.video \{ outline-color/.test(html));
 
 // 6. CSS: strip hidden in OBS, video drop-target styles
 ok("css: body.obs .strip hidden", /body\.obs \.strip \{ display: none; \}/.test(html));
@@ -94,7 +105,7 @@ ok("hero: sceneToJSON field", /hero: t\.hero \|\| undefined/.test(code));
 ok("hero: applyScene field", /hero: !!t\.hero/.test(code));
 ok("hero: single-hero dedupe on load", /if \(seenHero\) t\.hero = false/.test(code));
 ok("hero: star button created", code.includes('heroBtn.textContent = "⭐"'));
-ok("hero: dnd slot transfer (dropOnHeroUid)", /dropOnHeroUid/.test(code));
+ok("hero: dnd slot transfer (dropOnHero)", /dropOnHero = onHero/.test(code));
 ok("hero: dnd slot drop swaps + transfers star", /state\.tiles\[to\]\.hero = true/.test(code));
 ok("hero: reorder re-layouts in hero mode", /if \(state\.cols === "hero"\) applyLayout\(\);/.test(code));
 ok("hero: removeTile re-layouts (ring shrinks)", /updateEmpty\(\);\s*applyLayout\(\);/.test(code));

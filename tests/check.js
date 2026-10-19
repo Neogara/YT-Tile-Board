@@ -18,7 +18,7 @@ const checks = [
   ["fitall in scene", /fitall: state\.fitall/.test(code)],
   ["strip in buildTile", /className = "strip"/.test(code)],
   ["video div", /className = "video"/.test(code)],
-  ["drop-noop cleanup", /classList\.remove\("drop-target", "drop-before", "drop-after", "drop-noop"\)/.test(code)],
+  ["drop cleanup classes", /classList\.remove\("drop-target", "drop-swap", "drop-hero"\)/.test(code)],
   ["no leftover .grip class", !/className = "grip"/.test(code)]
 ];
 let fail = false;

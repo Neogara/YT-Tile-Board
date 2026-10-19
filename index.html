@@ -163,7 +163,6 @@
   body.hero #grid .tile { width: auto; height: auto; } /* геометрию задаёт grid-area */
   body.hero.fit #grid .video { aspect-ratio: auto; } /* видео заполняет клетку, letterbox делает YouTube */
   body:not(.obs) .tile.hero-main { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .tile.drop-hero .video { outline-color: var(--accent); }
 
   /* ---------- Tile ---------- */
   .tile {
@@ -200,36 +199,36 @@
   /* Тайл, который тащат: полупрозрачный, приглушённый */
   .tile.dragging { opacity: .35; filter: saturate(.5); }
 
-  /* ---------- Подсказка drop на видео ---------- */
-  .tile.drop-target .video { outline-color: var(--accent); }
+  /* ---------- Подсказка drop: тайлы поменяются местами ---------- */
+  /* Плашка-значок по центру цели: ⇄ = обмен, ⭐ = смена героя */
   .tile.drop-target .video::before {
-    content: "";
+    content: "⇄";
     position: absolute;
-    top: 4px;
-    bottom: 4px;
-    width: 4px;
-    border-radius: 2px;
-    background: var(--accent);
-    box-shadow: 0 0 10px rgba(255, 78, 69, .7);
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, .85);
     z-index: 5;
     pointer-events: none;
   }
-  .tile.drop-before .video::before { left: 3px; }
-  .tile.drop-after .video::before { right: 3px; }
-  /* Цветная заливка видео, куда будет совершено перемещение */
+  .tile.drop-hero .video::before { content: "⭐"; }
+  /* Цветная заливка + обводка видео, с которым тащимый поменяется местами.
+     Обводка — здесь, а не outline на .video: iframe внутри перекрывает его,
+     а этот pseudo-элемент выше iframe по z-index */
   .tile.drop-target .video::after {
     content: "";
     position: absolute;
     inset: 0;
     background: rgba(255, 78, 69, .16);
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
     z-index: 4;
     pointer-events: none;
     transition: background .15s;
   }
-  /* No-op: тайл уже на этом месте — нейтральная серая индикация */
-  .tile.drop-target.drop-noop .video { outline-color: #8b919c; }
-  .tile.drop-target.drop-noop .video::before { background: #8b919c; box-shadow: none; }
-  .tile.drop-target.drop-noop .video::after { background: rgba(139, 145, 156, .12); }
 
   /* ---------- Полоска контроллов под видео ---------- */
   .strip {
@@ -1315,26 +1314,19 @@ function removeTile(uid) {
 // левая полоса = «вставить до этого видео», правая = «после этого видео».
 let dragUid = null;
 let draggedEl = null;
-let dropTo = -1; // индекс вставки (в «пост-удалённых» координатах)
-let dropOnHeroUid = null; // дроп на тайл-герой = «сменить героя» (только в раскладке «Герой»)
+let dropOnUid = null; // uid тайла-цели: дроп = обмен этими двумя тайлами местами
+let dropOnHero = false; // цель — слот героя: обмен + ⭐ уходит дропнутому
 
 function clearDropTargetClasses() {
   grid.querySelectorAll(".tile.drop-target").forEach(x => {
-    x.classList.remove("drop-target", "drop-before", "drop-after", "drop-noop");
+    x.classList.remove("drop-target", "drop-swap", "drop-hero");
   });
 }
 
 function clearDropTarget() {
-  dropTo = -1;
-  dropOnHeroUid = null;
+  dropOnUid = null;
+  dropOnHero = false;
   clearDropTargetClasses();
-}
-
-function setDropTarget(tileEl, before, noop) {
-  clearDropTargetClasses(); // только классы! dropTo уже посчитан — его трогать нельзя
-  if (!tileEl) return;
-  tileEl.classList.add("drop-target", before ? "drop-before" : "drop-after");
-  if (noop) tileEl.classList.add("drop-noop");
 }
 
 function startDrag(e, uid) {
@@ -1360,78 +1352,56 @@ gridWrap.addEventListener("dragover", e => {
   }
   if (!tile) return; // над пустым местом (зазоры, фон) — держим последнюю валидную цель
 
-  const draggedT = state.tiles.find(x => x.uid === dragUid);
-  const f = state.tiles.indexOf(draggedT);
-  if (f < 0) { clearDropTarget(); return; }
-
   if (tile === draggedEl) {
     // над самим тащим тайлом — дроп без изменений, подсветку убираем
     clearDropTarget();
-    dropTo = f;
+    dropOnUid = dragUid;
     return;
   }
 
   const hoveredT = state.tiles.find(x => x.uid === tile.dataset.uid);
-  const k = state.tiles.indexOf(hoveredT);
-  if (k < 0) { clearDropTarget(); return; }
+  if (!hoveredT) { clearDropTarget(); return; }
 
-  // Над тайлом-героем — цель «сменить героя»: дроп меняет тайлы местами, ⭐ уходит drопнутому
+  // Дроп = обмен с тайлом под курсором (половинки не важны). Над слотом героя —
+  // цель «сменить героя»: обмен + ⭐ уходит дропнутому.
   const heroEl = grid.querySelector(".tile.hero-main");
-  if (heroEl && tile === heroEl && tile !== draggedEl) {
-    clearDropTargetClasses();
-    tile.classList.add("drop-target", "drop-hero");
-    dropOnHeroUid = tile.dataset.uid;
-    dropTo = f; // generic-ветка дропа при этом ничего не двигает
-    return;
-  }
-
-  const r = tile.getBoundingClientRect();
-  const before = e.clientX < r.left + r.width / 2;
-
-  // Индекс вставки с учётом того, ОТКУДА тащим:
-  // при удалении тащимого тайла ячейки сдвигаются.
-  dropTo = before
-    ? (f < k ? k - 1 : k)
-    : (f < k ? k : k + 1);
-
-  setDropTarget(tile, before, dropTo === f); // dropTo === f = тайл уже там, дроп ничего не сдвинет
+  const onHero = !!(heroEl && tile === heroEl);
+  clearDropTargetClasses();
+  tile.classList.add("drop-target", onHero ? "drop-hero" : "drop-swap");
+  dropOnUid = hoveredT.uid;
+  dropOnHero = onHero;
 });
 
 gridWrap.addEventListener("drop", e => {
-  if (!dragUid || dropTo < 0) { clearDropTarget(); return; }
+  if (!dragUid || !dropOnUid) { clearDropTarget(); return; }
   e.preventDefault();
   const from = state.tiles.findIndex(x => x.uid === dragUid);
-  if (from < 0) { clearDropTarget(); return; }
+  const to = state.tiles.findIndex(x => x.uid === dropOnUid);
+  const onHero = dropOnHero;
+  clearDropTarget();
+  if (from < 0 || to < 0 || from === to) return;
 
-  // Дроп на слот героя: тайлы меняются местами, ⭐ переходит drопнутому
-  if (dropOnHeroUid && dragUid !== dropOnHeroUid) {
-    const to = state.tiles.findIndex(x => x.uid === dropOnHeroUid);
-    if (to >= 0 && to !== from) {
-      const tmp = state.tiles[from];
-      state.tiles[from] = state.tiles[to];
-      state.tiles[to] = tmp;
-      state.tiles.forEach(x => { x.hero = false; });
-      state.tiles[to].hero = true; // перетащенный встал в слот героя — он и главный
-    }
-    clearDropTarget();
-    applyOrder();
-    applyLayout();
-    requestFitScale();
-    persistLocal();
-    syncHeroStars();
-    toast("⭐ Главное видео: " + (state.tiles[from] ? (state.tiles[from].label || state.tiles[from].list || state.tiles[from].id) : ""));
-    return;
+  // Дроп = обмен тайлов местами (тащимый встаёт на цель, цель — на место тащимого)
+  const tmp = state.tiles[from];
+  state.tiles[from] = state.tiles[to];
+  state.tiles[to] = tmp;
+
+  if (onHero) {
+    // в слот героя встал бывший тащимый — он и главный
+    state.tiles.forEach(x => { x.hero = false; });
+    state.tiles[to].hero = true;
   }
 
-  const [moved] = state.tiles.splice(from, 1);
-  const to = Math.max(0, Math.min(dropTo, state.tiles.length));
-  state.tiles.splice(to, 0, moved);
-  clearDropTarget();
   applyOrder();
   if (state.cols === "hero") applyLayout(); // порядок спутников в кольце = порядок в сцене
   requestFitScale();
   persistLocal();
-  toast("Порядок обновлён");
+  if (onHero) {
+    syncHeroStars();
+    toast("⭐ Главное видео: " + (state.tiles[to].label || state.tiles[to].list || state.tiles[to].id || ""));
+  } else {
+    toast("Видео поменялись местами");
+  }
 });
 
 document.addEventListener("dragend", () => {
