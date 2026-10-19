@@ -688,42 +688,56 @@ function iframeSrc(t) {
 }
 
 /* ---------- Пропорции видео ---------- */
-function gcd(a, b) { return b ? gcd(b, a % b) : a; }
-function ratioStr(w, h) { const d = gcd(w, h); return (w / d) + "/" + (h / d); }
 function effectiveAspect(t) {
   return t.aspect === "auto" ? (t.detected || "16/9") : t.aspect;
 }
-// Пытаемся узнать реальные пропорции через YouTube innertube (без ключа, CORS-разрешено)
+// Рилс-ссылка: /shorts/ID — такие видео всегда вертикальные, видно без сети
+function isShortsUrl(raw) {
+  return /\/shorts\/[A-Za-z0-9_-]{11}/.test((raw || "").trim());
+}
+// Реальные размеры кодеков из браузера недоступны — приводим к ближайшему формату из списка
+const ASPECT_STD = ["16/9", "9/16", "4/3", "1/1", "21/9"];
+function nearAspect(w, h) {
+  const r = w / h;
+  let best = "16/9", d = Infinity;
+  for (const a of ASPECT_STD) {
+    const p = a.split("/");
+    const dd = Math.abs(r - p[0] / p[1]);
+    if (dd < d) { d = dd; best = a; }
+  }
+  return best;
+}
+// Узнаём пропорции через oembed: он отдаёт размеры плеера (обычное 16:9 → 200×113,
+// старое 4:3 → 200×150, рилс → 113×200) и работает из браузера.
+// Innertube (youtubei) для этого непригоден — у YouTube нет CORS-заголовков на его endpoint-ах.
 async function detectAspect(id, tile) {
+  const oe = u => fetch("https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(u))
+    .then(r => r.ok ? r.json() : null).catch(() => null);
   try {
-    const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        context: { client: { clientName: "WEB", clientVersion: "2.20250101.00.00" } },
-        videoId: id
-      })
-    });
-    const data = await res.json();
-    const sd = data.streamingData || {};
-    const fmts = (sd.formats || []).concat(sd.adaptiveFormats || []);
-    let best = null;
-    for (const f of fmts) {
-      if (f.width && f.height && (!best || f.width * f.height > best.width * best.height)) best = f;
+    let d = await oe("https://www.youtube.com/watch?v=" + id);
+    // watch-форма для рилсов нормализует в горизонталь (200×113) — уточняем через
+    // shorts-форму: для не-рилсов она возвращает те же размеры, для рилсов — портрет
+    if (d && d.width === 200 && d.height === 113) {
+      const s = await oe("https://www.youtube.com/shorts/" + id);
+      if (s && s.width && s.height) d = s;
     }
-    if (best) {
-      tile.detected = ratioStr(best.width, best.height);
-      const el = grid.querySelector('[data-uid="' + tile.uid + '"]');
-      const video = el && el.querySelector(".video");
-      if (video) video.style.setProperty("--ar", effectiveAspect(tile));
-      requestFitScale();
+    if (!d || !d.width || !d.height) return; // приватное/удалённое — оставим 16/9
+    tile.detected = nearAspect(d.width, d.height);
+    const el = grid.querySelector('[data-uid="' + tile.uid + '"]');
+    const video = el && el.querySelector(".video");
+    if (video) video.style.setProperty("--ar", effectiveAspect(tile));
+    const aspSel = el && el.querySelector('select[title="Формат видео"]');
+    if (aspSel) { // метка в списке форматов: «авто (9/16)»
+      const opt = aspSel.querySelector('option[value="auto"]');
+      if (opt) opt.textContent = "авто (" + tile.detected + ")";
     }
+    requestFitScale();
   } catch (e) { /* оставим 16/9 */ }
 }
 
 /* ---------- Плейлист: заголовок/доступность (oembed) и состав (IFrame API) ---------- */
 // NB: youtubei (innertube) из браузера не работает — у YouTube нет CORS-заголовков
-// на этих endpoint-ах (падает и detectAspect). Здесь только источники без CORS-проблем.
+// на этих endpoint-ах. Все обращения к YouTube идут через oembed или IFrame API.
 
 // Заголовок + быстрая проверка прав: oembed отдаёт имя плейлиста, 400 = нет такого/закрыт
 async function fetchPlaylistMeta(listId) {
@@ -1788,12 +1802,14 @@ function pushTile(t, aspectId) {
   if (aspectId) detectAspect(aspectId, t); // async: обновит пропорции, когда узнает
 }
 
-function addVideo(raw) {
+function addVideo(raw, detected) {
   const L = extractList(raw);
   if (L) { openPlaylistModal(L); return; } // плейлист-ссылка — на выбор через модалку
   const id = extractId(raw);
   if (!id) { toast("Не удалось распознать ссылку YouTube"); return; }
   if (state.tiles.length >= 15) { toast("Максимум 15 тайлов"); return; }
+  // рилс-ссылка всегда вертикальная — ставим 9/16 сразу, без сетевого запроса
+  const known = detected || (isShortsUrl(raw) ? "9/16" : null);
   const t = {
     uid: "t" + (uidCounter++) + "_" + Date.now().toString(36),
     id,
@@ -1803,9 +1819,9 @@ function addVideo(raw) {
     muted: true,
     rate: 1,
     aspect: "auto",
-    detected: null
+    detected: known
   };
-  pushTile(t, id);
+  pushTile(t, known ? null : id); // пропорции уже известны — не ходим в сеть
   toast("Видео добавлено: " + id);
 }
 
@@ -1978,16 +1994,16 @@ document.getElementById("addUrl").addEventListener("paste", e => {
   const text = ((e.clipboardData || window.clipboardData).getData("text") || "").trim();
   const parts = text.split(/[\s,;]+/).filter(Boolean);
   if (parts.length < 2) return; // одна ссылка — обычная вставка (плейлист откроет модалку)
-  const ids = parts.map(extractId).filter(Boolean);
+  const vids = parts.map(p => ({ id: extractId(p), short: isShortsUrl(p) })).filter(v => v.id);
   // Массово добавляем только обычные видео; чистые плейлист-ссылки пропускаем
   const plCount = parts.filter(p => extractList(p) && !extractId(p)).length;
-  if (ids.length + plCount < 2) return;
+  if (vids.length + plCount < 2) return;
   e.preventDefault();
   let added = 0, skipped = 0;
-  for (const id of ids) {
+  for (const v of vids) {
     if (state.tiles.length >= 15) { skipped++; continue; }
-    if (state.tiles.some(t => t.id === id)) { skipped++; continue; }
-    addVideo(id);
+    if (state.tiles.some(t => t.id === v.id)) { skipped++; continue; }
+    addVideo(v.id, v.short ? "9/16" : null); // рилс из списка ссылок тоже сразу вертикальный
     added++;
   }
   toast("Добавлено: " + added

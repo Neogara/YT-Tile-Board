@@ -284,6 +284,24 @@ ok("hero: css drop-hero cue", /\.tile\.drop-hero/.test(html));
     /const plCount = parts\.filter\(p => extractList\(p\) && !extractId\(p\)\)\.length;/.test(code));
   ok("paste: тост сообщает о пропущенных плейлистах", code.includes("· плейлистов пропущено: "));
   ok("hotkeys: guard при открытой модалке", /if \(plDialog\.open\) return;/.test(code));
+
+  // 12. Пропорции: oembed вместо innertube, рилс → 9/16
+  ok("aspect: innertube player вычищен", !code.includes("youtubei/v1/player"));
+  ok("aspect: нет остатков мёртвых gcd/ratioStr", !/function gcd\(|ratioStr/.test(code));
+  ok("aspect: detectAspect через oembed (источник без CORS-проблем)",
+    /function detectAspect[\s\S]*?oembed\?format=json&url=/.test(code));
+  ok("aspect: пропорции приводятся к ближайшему формату",
+    /function nearAspect\(/.test(code) && /nearAspect\(d\.width, d\.height\)/.test(code));
+  ok("aspect: рилс-уточнение через shorts-форму oembed",
+    /d\.width === 200 && d\.height === 113/.test(code) && /oe\("https:\/\/www\.youtube\.com\/shorts\/" \+ id\)/.test(code));
+  ok("aspect: недоступное видео → остаёмся на 16/9",
+    /if \(!d \|\| !d\.width \|\| !d\.height\) return;/.test(code));
+  ok("aspect: метка «авто (…)» обновляется после детекта", /option\[value="auto"\]/.test(code));
+  ok("aspect: рилс-ссылка распознаётся", /function isShortsUrl\(/.test(code));
+  ok("aspect: addVideo ставит 9/16 для рилса без сети",
+    /isShortsUrl\(raw\) \? "9\/16"/.test(code) && /pushTile\(t, known \? null : id\)/.test(code));
+  ok("aspect: массовая вставка прокидывает рилс-флаг из ссылок",
+    /v\.short \? "9\/16" : null/.test(code));
 }
 
 console.log(fail ? `\n${fail} FAILURES` : "\nALL PASSED");
