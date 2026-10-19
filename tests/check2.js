@@ -67,6 +67,12 @@ ok("dnd: обводка цели — на pseudo-слое выше iframe (ин�
   /\.tile\.drop-target \.video::after \{[\s\S]*?outline: 2px solid var\(--accent\)[\s\S]*?z-index: 4/.test(html) &&
   !/\.tile\.drop-target \.video \{ outline-color/.test(html));
 
+// 13. Авто-цикл при добавлении (тайлы-плейлисты — без цикла)
+ok("loop: addVideo ставит цикл сразу", /function addVideo[\s\S]{0,800}?loop: true/.test(code));
+ok("loop: addPlaylistTile остаётся без цикла", /function addPlaylistTile[\s\S]{0,500}?loop: false/.test(code));
+ok("loop: iframe обычного видео — хак loop=1&playlist=<id>",
+  /if \(t\.loop\) \{ p\.set\("loop", "1"\); p\.set\("playlist", t\.id\); \}/.test(code));
+
 // 6. CSS: strip hidden in OBS, video drop-target styles
 ok("css: body.obs .strip hidden", /body\.obs \.strip \{ display: none; \}/.test(html));
 ok("css: fit aspect on .video", /body\.fit #grid \.video \{ aspect-ratio/.test(html));

@@ -1785,7 +1785,7 @@ function addVideo(raw, detected) {
     id,
     label: "",
     start: 0,
-    loop: false,
+    loop: true, // новое видео сразу зациклено (у плейлиста цикл — по кнопке 🔁)
     muted: true,
     rate: 1,
     aspect: "auto",
