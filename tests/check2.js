@@ -160,5 +160,131 @@ ok("hero: css drop-hero cue", /\.tile\.drop-hero/.test(html));
   ok("hero order: 0 во внутреннем слое сверху (строка 2)", parse(p17.areas[0])[0] === 2);
 }
 
+// 11. Плейлисты: парсинг ссылок, модалка, тайл, сцена, автопропуск
+{
+  // --- extractList: чистая функция, вырезаем и гоняем без браузера ---
+  const srcId = code.match(/function extractId[\s\S]*?\n\}/)[0];
+  const srcList = code.match(/function extractList[\s\S]*?\n\}/)[0];
+  const location = { href: "http://localhost:8000/index.html" };
+  const extractId = eval("(" + srcId + ")");
+  const extractList = eval("(" + srcList + ")");
+  const PL = "PLnvEBIEMe10kMGIDhrSEeRpalQ0vWpjpA";
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  ok("list: watch?v=ID&list=PL → list + videoId",
+    eq(extractList("https://www.youtube.com/watch?v=ycGDR752fT0&list=" + PL),
+       { list: PL, videoId: "ycGDR752fT0" }));
+  ok("list: /playlist?list=PL → только list",
+    eq(extractList("https://www.youtube.com/playlist?list=" + PL), { list: PL, videoId: null }));
+  ok("list: youtu.be/ID?list=PL → list + videoId",
+    eq(extractList("https://youtu.be/ycGDR752fT0?list=" + PL),
+       { list: PL, videoId: "ycGDR752fT0" }));
+  ok("list: голый ID плейлиста → list",
+    eq(extractList(PL), { list: PL, videoId: null }));
+  ok("list: голый ID видео (11 символов) — не плейлист", extractList("ycGDR752fT0") === null);
+  ok("list: обычное видео без list → null",
+    extractList("https://www.youtube.com/watch?v=ycGDR752fT0") === null);
+  ok("list: чужой домен с list= → null",
+    extractList("https://example.com/playlist?list=" + PL) === null);
+  ok("list: пусто → null", extractList("") === null && extractList("   ") === null);
+
+  // --- iframeSrc: у плейлиста videoseries и всегда с начала ---
+  const srcFns = code.match(/function iframeSrc[\s\S]*?\n\}/)[0];
+  const FILE_MODE = false;
+  const location2 = { origin: "http://localhost:8000" };
+  const iframeSrc = eval("(" + srcFns + ")");
+  const plSrc = iframeSrc({ list: PL, id: "", muted: true, start: 0, loop: false });
+  ok("iframe: плейлист → /embed/videoseries? c list=",
+    plSrc.includes("/embed/videoseries?") && plSrc.includes("list=" + PL));
+  ok("iframe: плейлист + enablejsapi", plSrc.includes("enablejsapi=1"));
+  ok("iframe: плейлист играет с первого видео (без старта)", !plSrc.includes("start="));
+  ok("iframe: 🔁 плейлиста → loop=1 в URL",
+    iframeSrc({ list: PL, id: "", loop: true }).includes("loop=1"));
+  ok("iframe: обычный тайл не задет",
+    iframeSrc({ id: "ycGDR752fT0", muted: true, start: 5, loop: false })
+      .includes("/embed/ycGDR752fT0?"));
+
+  // --- функции ---
+  for (const fn of ["extractList", "fetchPlaylistInfo", "fetchPlaylistMeta", "getPlaylistIds",
+                    "openPlaylistModal", "addPlaylistTile",
+                    "insertSeveralFromPlaylist", "updatePlNav", "badgeText", "handleTileError",
+                    "onTilePlaying", "onTileEnded", "currentVideoId", "pushTile"]) {
+    ok(`pl fn defined: ${fn}`, new RegExp("(function\\s+" + fn + "\\s*\\()").test(code));
+  }
+
+  // --- модалка: нативный <dialog> ---
+  ok("dialog: <dialog id=playlistDialog>", /<dialog id="playlistDialog"/.test(html));
+  ok("dialog: form method=dialog (закрытие без JS)", /<form method="dialog">/.test(html));
+  ok("dialog: aria-labelledby", /aria-labelledby="plTitle"/.test(html));
+  ok("dialog: кнопки video/playlist/several",
+    /id="plBtnVideo" value="video"/.test(html) &&
+    /id="plBtnPlaylist" value="playlist"/.test(html) &&
+    /id="plBtnSeveral" value="several"/.test(html));
+  ok("dialog: showModal()", /plDialog\.showModal\(\)/.test(code));
+  ok("dialog: автофокус showModal перехвачен (иначе Enter сразу жмёт кнопку)",
+    /plDialog\.showModal\(\);[\s\S]{0,320}?plDialog\.focus\(\);/.test(code) &&
+    /requestAnimationFrame\(\(\) => \{ if \(plDialog\.open\) plEls\.btnPlaylist\.focus\(\); \}\)/.test(code));
+  ok("dialog: returnValue сбрасывается перед открытием", /plDialog\.returnValue = "";/.test(code));
+  ok("dialog: действие по submit/e.submitter (close не диспатчится в Electron)",
+    /querySelector\("form"\)\.addEventListener\("submit"/.test(code) && /e\.submitter && e\.submitter\.value/.test(code));
+  ok("dialog: нет завязки на close-событие", !/plDialog\.addEventListener\("close"/.test(code));
+  ok("dialog: кнопки во всю ширину модалки", /#playlistDialog button \{ width: 100%/.test(html));
+  ok("dialog: разделитель перед секцией количества", /class="dlg-sep"/.test(html) && /\.dlg-sep \{/.test(html));
+  ok("dialog: отступ перед «Отмена»", /class="dlg-gap"/.test(html) && /\.dlg-gap \{ height: 22px; \}/.test(html));
+  ok("dialog: центр по ширине, сверху по вертикали",
+    /#playlistDialog \{[\s\S]{0,400}?position: fixed;[\s\S]{0,120}?top: 24px;[\s\S]{0,80}?margin: 0 auto;/.test(html));
+  ok("dialog: секция «Вставить несколько» единым блоком",
+    /id="plSeveral" hidden/.test(html) && /plEls\.several\.hidden = !pure/.test(code));
+  ok("dialog: название плейлиста отдельной строкой, без «— выбери…»",
+    /Ссылка ведёт на видео внутри плейлиста:\\n«" \+ r\.title/.test(code) && !code.includes("— выбери, что вставить."));
+  ok("dialog: .dlg-info рендерит \\n как перенос", /#playlistDialog \.dlg-info \{[^}]*white-space: pre-line/.test(html));
+  ok("dialog: клик по подложке закрывает окно",
+    /plDialog\.addEventListener\("click"/.test(code) && /if \(outside\) plDialog\.close\(\)/.test(code));
+  ok("dialog: заголовок/права через oembed (CORS-дружелюбный)", code.includes("youtube.com/oembed?format=json&url="));
+  ok("dialog: состав через cuePlaylist + getPlaylist", 
+    code.includes("cuePlaylist({ list: listId") && code.includes("player.getPlaylist()"));
+  ok("dialog: временный плеер уничтожается после чтения", code.includes("player.destroy()"));
+  ok("dialog: контейнер временного плеера вставляется в DOM", code.includes("document.body.appendChild(holder)"));
+  ok("dialog: file:// → состав недоступен (error api)", code.includes('resolve({ error: "api" })'));
+  ok("нет CORS-мёртвых запросов: youtubei browse вычищен", !code.includes("youtubei/v1/browse"));
+  ok("css: ::backdrop модалки", /#playlistDialog::backdrop/.test(html));
+  ok("css: счётчик .pl-pos", /\.strip \.pl-pos/.test(html));
+
+  // --- тайл-плейлист ---
+  ok("pl: листание previousVideo/nextVideo вызывается",
+    /pl\.previousVideo\(\)/.test(code) && /pl\.nextVideo\(\)/.test(code));
+  ok("pl: кнопки ⏮/⏭ в полоске",
+    code.includes('prevBtn.className = "pl-prev"') && code.includes('nextBtn.className = "pl-next"'));
+  ok("pl: счётчик позиции", code.includes('pos.className = "pl-pos"'));
+  ok("pl: playVideo после листания (иначе CUED-залипание)",
+    /dir < 0 \? pl\.previousVideo\(\) : pl\.nextVideo\(\);[\s\S]{0,200}if \(!state\.allPaused\) pl\.playVideo\(\)/.test(code));
+  ok("pl: playVideo после автопропуска ошибки",
+    /pl\.nextVideo\(\);\s+if \(!state\.allPaused\) pl\.playVideo\(\);[\s\S]{0,60}чтобы пропущенное/.test(code));
+  ok("pl: setLoop при готовности", /pl\.setLoop\(!!tile\.loop\)/.test(code));
+  ok("pl: позиция в бейдже", /base \+ " · " \+ t\._plPos/.test(code));
+  ok("pl: «Старт» скрыт у плейлиста", /if \(!t\.list\) \{/.test(code));
+
+  // --- права: автопропуск с ограничителем, заглушка ---
+  ok("pl: onError → handleTileError (не сразу заглушка)",
+    /onError: ev => handleTileError\(uid, ev\.data\)/.test(code));
+  ok("pl: ENDED → onTileEnded", /PlayerState\.ENDED\) \{\s*onTileEnded\(uid\)/.test(code));
+  ok("pl: максимум 3 ошибки подряд", /\(plErrCount\[uid\] \|\| 0\) < 3/.test(code));
+  ok("pl: счётчик сбрасывается на PLAYING", /plErrCount\[uid\] = 0; \/\/ видео пошло/.test(code));
+  ok("pl: заглушка с пометкой плейлиста", /showVideoError\(uid, code, !!\(t && t\.list\)\)/.test(code));
+  ok("pl: ручной сброс при rebuildIframe", /plErrCount\[t\.uid\] = 0; \/\/ новая попытка/.test(code));
+
+  // --- сцена: version 3, поле list опциональное ---
+  ok("scene: list сохраняется", /list: t\.list \|\| undefined/.test(code));
+  ok("scene: filter пускает тайл-плейлист", /filter\(t => t && \(t\.id \|\| t\.list\)\)/.test(code));
+  ok("scene: валидация id плейлиста", /typeof t\.list === "string"/.test(code));
+  ok("scene: detectAspect только при t.id", /if \(!t\.detected && t\.id\) detectAspect/.test(code));
+
+  // --- массовая вставка: только обычные видео ---
+  ok("paste: чистые плейлисты считаются отдельно",
+    /const plCount = parts\.filter\(p => extractList\(p\) && !extractId\(p\)\)\.length;/.test(code));
+  ok("paste: тост сообщает о пропущенных плейлистах", code.includes("· плейлистов пропущено: "));
+  ok("hotkeys: guard при открытой модалке", /if \(plDialog\.open\) return;/.test(code));
+}
+
 console.log(fail ? `\n${fail} FAILURES` : "\nALL PASSED");
 process.exitCode = fail ? 1 : 0;

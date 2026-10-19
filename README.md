@@ -22,6 +22,7 @@ Paste a bunch of YouTube links, arrange them into a grid, hit **OBS mode** — a
 - **No black bars** — video aspect ratio is detected automatically; every tile hugs its content.
 - **Reorder without reload** — drag tiles by the `⠿` grip; videos keep playing because only the flex order changes.
 - **Errors don't go black** — a disabled embed shows a readable plaque (`code → reason → delete`) instead of a dead rectangle.
+- **Playlists are first-class** — paste a playlist link and choose: one tile that plays the whole list in a loop (with ⏮/⏭ and a position counter), or just the first N videos as separate tiles.
 - **Ships with a preset** — first boot loads a ready 5-video sludge board from `preset.json`.
 
 ## Quick start
@@ -82,7 +83,8 @@ Panel state travels with the scene (`allPaused`, `masterMuted`, `volume`, `label
 
 ## Working with the scene
 
-- **Add videos** — paste a link (`watch`, `youtu.be`, `shorts`, `live`, `embed`) or an 11-char ID → `Enter`. Paste a whole **list** (separated by spaces, newlines, commas or semicolons) and every video is added at once — duplicates are skipped, cap is 15.
+- **Add videos** — paste a link (`watch`, `youtu.be`, `shorts`, `live`, `embed`) or an 11-char ID → `Enter`. Paste a whole **list** (separated by spaces, newlines, commas or semicolons) and every video is added at once — duplicates are skipped, cap is 15 (playlist links in such a bulk paste are counted and skipped — add them one by one).
+- **Playlists** — a link with `list=` (or a bare playlist ID) opens a dialog: **«Insert as playlist»** makes a single tile that plays the whole playlist back to back (always from the first video) with ⏮/⏭ buttons and a `3/10` counter in its strip, and 🔁 loops the whole playlist; **«Insert several»** drops the first N videos of the playlist as ordinary tiles. Unavailable videos are skipped automatically while playing (max 3 in a row, then a readable plaque with ↻ retry / ✕ delete).
 - **Reorder** — drag the `⠿` grip on a tile's control strip.
 - **Per-tile strip** under each video:
   - label (becomes the badge over the video),

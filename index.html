@@ -432,6 +432,48 @@
     max-width: 80vw;
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- Модалка плейлиста (нативный <dialog>) ---------- */
+  #playlistDialog {
+    border: 1px solid #3a4150;
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 18px 20px;
+    width: min(460px, calc(100vw - 32px));
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+    /* гасим нативное вертикальное центрирование: по ширине — центр, по вертикали — верх */
+    position: fixed;
+    top: 24px;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+  }
+  #playlistDialog::backdrop { background: rgba(10, 12, 16, .68); }
+  #playlistDialog h2 { font-size: 15px; margin-bottom: 8px; }
+  #playlistDialog .dlg-info { font-size: 12.5px; color: var(--dim); line-height: 1.55; margin-bottom: 8px; white-space: pre-line; }
+  #playlistDialog .dlg-info.err { color: #ff8a80; }
+  #playlistDialog .dlg-url {
+    font-family: Consolas, "Courier New", monospace;
+    background: var(--panel2);
+    border: 1px solid #262b36;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11.5px;
+    color: var(--dim);
+    word-break: break-all;
+    margin-bottom: 10px;
+  }
+  /* все кнопки модалки — на всю ширину, стопкой */
+  #playlistDialog button { width: 100%; margin-top: 8px; }
+  #playlistDialog .dlg-sep { border: 0; border-top: 1px solid #2b3140; margin: 14px 0; }
+  #playlistDialog .dlg-count { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+  #playlistDialog .dlg-count input { width: 76px; }
+  #playlistDialog .dlg-note { font-size: 11.5px; color: var(--dim); margin-top: 6px; }
+  #playlistDialog .dlg-gap { height: 22px; } /* большой отступ перед «Отмена» */
+
+  /* Позиция в плейлисте — в полоске контроллов */
+  .strip .pl-pos { font-size: 10px; color: var(--dim); min-width: 34px; text-align: center; user-select: none; }
 </style>
 </head>
 <body class="fit">
@@ -525,6 +567,29 @@
 
 <div id="toast"></div>
 
+<!-- Модалка выбора при плейлист-ссылке: нативный <dialog> (showModal, ::backdrop, Esc) -->
+<dialog id="playlistDialog" aria-labelledby="plTitle">
+  <form method="dialog">
+    <h2 id="plTitle">Ссылка на плейлист</h2>
+    <div id="plInfo" class="dlg-info"></div>
+    <div id="plUrl" class="dlg-url"></div>
+    <button id="plBtnVideo" value="video" hidden>Вставить видео из плейлиста</button>
+    <button id="plBtnPlaylist" value="playlist" class="primary">Вставить весь плейлист</button>
+    <!-- секция «Вставить несколько»: разделитель, количество, итог, кнопка -->
+    <div id="plSeveral" hidden>
+      <div class="dlg-sep"></div>
+      <label class="dlg-count" id="plCountWrap">
+        Сколько видео вставить:
+        <input id="plCount" type="number" min="1" step="1" value="5">
+      </label>
+      <div id="plNote" class="dlg-note"></div>
+      <button id="plBtnSeveral" value="several" disabled>Вставить несколько из плейлиста</button>
+    </div>
+    <div class="dlg-gap"></div>
+    <button id="plBtnCancel" value="">Отмена</button>
+  </form>
+</dialog>
+
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
 "use strict";
@@ -583,6 +648,22 @@ function extractId(url) {
   return null;
 }
 
+// Плейлист-ссылка: любой YouTube-URL с параметром list= либо «голый» ID плейлиста
+// (ID видео — ровно 11 символов, ID плейлиста длиннее — поэтому порог 13)
+function extractList(raw) {
+  raw = (raw || "").trim();
+  if (!raw) return null;
+  if (/^[A-Za-z0-9_-]{13,64}$/.test(raw)) return { list: raw, videoId: null };
+  let u = null;
+  try { u = new URL(raw, location.href); } catch (e) { return null; }
+  const host = u.hostname.toLowerCase();
+  const isYT = /(^|\.)youtube(-nocookie)?\.com$/.test(host) || host === "youtu.be";
+  if (!isYT) return null;
+  const list = u.searchParams.get("list");
+  if (!list || !/^[A-Za-z0-9_-]{10,64}$/.test(list)) return null;
+  return { list, videoId: extractId(raw) };
+}
+
 function iframeSrc(t) {
   const p = new URLSearchParams({
     autoplay: "1",
@@ -593,6 +674,13 @@ function iframeSrc(t) {
   if (!FILE_MODE) {
     p.set("enablejsapi", "1");
     p.set("origin", location.origin);
+  }
+  if (t.list) {
+    // Плейлист-тайл: всегда старт с первого видео; loop=1 циклирует плейлист
+    // (у обычного видео loop работает только через хак playlist=<id> ниже)
+    if (t.loop) p.set("loop", "1");
+    p.set("list", t.list);
+    return "https://www.youtube-nocookie.com/embed/videoseries?" + p.toString();
   }
   if (t.start > 0) p.set("start", String(t.start));
   if (t.loop) { p.set("loop", "1"); p.set("playlist", t.id); }
@@ -633,6 +721,99 @@ async function detectAspect(id, tile) {
   } catch (e) { /* оставим 16/9 */ }
 }
 
+/* ---------- Плейлист: заголовок/доступность (oembed) и состав (IFrame API) ---------- */
+// NB: youtubei (innertube) из браузера не работает — у YouTube нет CORS-заголовков
+// на этих endpoint-ах (падает и detectAspect). Здесь только источники без CORS-проблем.
+
+// Заголовок + быстрая проверка прав: oembed отдаёт имя плейлиста, 400 = нет такого/закрыт
+async function fetchPlaylistMeta(listId) {
+  try {
+    const res = await fetch("https://www.youtube.com/oembed?format=json&url=" +
+      encodeURIComponent("https://www.youtube.com/playlist?list=" + listId));
+    if (res.ok) {
+      let title = "";
+      try { title = (await res.json()).title || ""; } catch (e) {}
+      return { title };
+    }
+    return { unavailable: true }; // 400 — плейлист не существует или закрыт правами
+  } catch (e) {
+    return { network: true }; // сеть — не значит «нет прав»
+  }
+}
+
+// Состов плейлиста — через временный скрытый YT.Player: cuePlaylist + getPlaylist.
+// Официальный API: работает и на localhost, и на Pages, CORS тут ни при чём.
+function getPlaylistIds(listId) {
+  return new Promise(resolve => {
+    if (FILE_MODE) { resolve({ error: "api" }); return; }
+    let player = null, ready = false, settled = false, apiWait = null, poll = null, hard = null;
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:fixed;left:-99999px;top:0;width:320px;height:180px;";
+    const finish = res => {
+      if (settled) return;
+      settled = true;
+      clearInterval(apiWait); clearInterval(poll); clearTimeout(hard);
+      try { if (player) player.destroy(); } catch (e) {}
+      holder.remove();
+      resolve(res);
+    };
+    const grab = () => {
+      if (!ready || !player) return;
+      try {
+        const arr = player.getPlaylist();
+        if (Array.isArray(arr) && arr.length) finish({ ids: arr });
+      } catch (e) {}
+    };
+    hard = setTimeout(() => finish({ error: "timeout" }), 15000);
+    const boot = () => {
+      if (settled) return;
+      if (!(window.YT && YT.Player)) return; // API ещё грузится — ждёт apiWait
+      clearInterval(apiWait);
+      try {
+        document.body.appendChild(holder); // iframe встанет вместо этого div — контейнер обязан быть в DOM
+        player = new YT.Player(holder, {
+          playerVars: { list: listId, listType: "playlist", autoplay: 0, controls: 0, rel: 0, playsinline: 1 },
+          events: {
+            onReady: () => {
+              ready = true;
+              try { player.mute(); } catch (e) {} // подстраховка: список нам нужен, а не звук
+              grab();
+              if (!settled) {
+                try { player.cuePlaylist({ list: listId, listType: "playlist" }); } catch (e) {}
+              }
+            },
+            onStateChange: grab,
+            onError: () => {
+              // ошибке первого видео (запрет встраивания) не мешает списку — пробуем взять его
+              try {
+                const arr = player.getPlaylist();
+                if (Array.isArray(arr) && arr.length) { finish({ ids: arr }); return; }
+              } catch (e) {}
+              finish({ error: "unavailable" });
+            }
+          }
+        });
+      } catch (e) { finish({ error: "unavailable" }); }
+    };
+    apiWait = setInterval(boot, 200);
+    boot();
+    poll = setInterval(grab, 350);
+  });
+}
+
+// Итог для модалки: {title, ids, unavailable, network, api}
+async function fetchPlaylistInfo(listId, withIds) {
+  const out = Object.assign({ title: "", ids: null, unavailable: false, network: false, api: false },
+    await fetchPlaylistMeta(listId));
+  if (out.unavailable || !withIds) return out;
+  const r = await getPlaylistIds(listId);
+  if (r.ids) out.ids = r.ids;
+  else if (r.error === "api") out.api = true;
+  else if (r.error === "timeout") out.network = true;
+  else out.unavailable = true;
+  return out;
+}
+
 /* =============== YouTube IFrame API =============== */
 let apiReady = false;
 let apiPoll = 0;
@@ -667,6 +848,11 @@ function attachPlayers() {
               pl.setVolume(Math.max(0, Math.min(100, state.volume || 100)));
               if (state.masterMuted || tile.muted) pl.mute(); else pl.unMute();
               if (tile.rate && tile.rate !== 1) pl.setPlaybackRate(tile.rate);
+              if (tile.list) {
+                // плейлист-тайл: цикл плейлиста + актуальные состояния ⏮/⏭
+                try { pl.setLoop(!!tile.loop); } catch (e) {}
+                updatePlNav(uid);
+              }
               if (state.allPaused) {
                 pl.pauseVideo();
               } else if (maximizedUid && maximizedUid !== uid) {
@@ -685,13 +871,111 @@ function attachPlayers() {
               if (tile && tile.rate && tile.rate !== 1) {
                 try { ev.target.setPlaybackRate(tile.rate); } catch (e) {}
               }
+              onTilePlaying(uid, ev.target);
+            } else if (ev.data === YT.PlayerState.ENDED) {
+              onTileEnded(uid);
             }
           },
-          onError: ev => showVideoError(uid, ev.data)
+          onError: ev => handleTileError(uid, ev.data)
         }
       });
     } catch (e) { /* ignore */ }
   });
+}
+
+/* ---------- Плейлист-тайл: позиция, автопереход, пропуск ошибок ---------- */
+const plErrCount = {}; // uid → сколько ошибок подряд (для автопропуска и защиты от зацикливания)
+
+// Текущее видео плеера: из getVideoUrl(), фолбэк — по индексу в getPlaylist()
+function currentVideoId(pl) {
+  try {
+    const id = extractId(pl.getVideoUrl() || "");
+    if (id) return id;
+  } catch (e) {}
+  try {
+    const arr = pl.getPlaylist();
+    const i = pl.getPlaylistIndex();
+    if (Array.isArray(arr) && arr[i]) return arr[i];
+  } catch (e) {}
+  return null;
+}
+
+// Бейдж тайла: лейбл, у плейлиста + позиция «3/10»
+function badgeText(t) {
+  const base = t.label || "";
+  if (!t.list || !t._plPos) return base;
+  return base ? base + " · " + t._plPos : t._plPos;
+}
+
+// Состояния кнопок ⏮/⏭ и счётчик позиции (вызывается при готовности и на смене видео)
+function updatePlNav(uid) {
+  const t = state.tiles.find(x => x.uid === uid);
+  if (!t || !t.list) return;
+  const el = grid.querySelector('[data-uid="' + uid + '"]');
+  if (!el) return;
+  const prev = el.querySelector(".pl-prev");
+  const next = el.querySelector(".pl-next");
+  const pos = el.querySelector(".pl-pos");
+  const badge = el.querySelector(".badge");
+  const pl = players[uid];
+  let idx = -1, len = 0;
+  if (pl) {
+    try {
+      const arr = pl.getPlaylist();
+      len = Array.isArray(arr) ? arr.length : 0;
+      idx = pl.getPlaylistIndex();
+    } catch (e) {}
+  }
+  const has = len > 0 && idx >= 0;
+  t._plPos = has ? (idx + 1) + "/" + len : "";
+  if (prev) prev.disabled = has && idx <= 0;
+  if (next) next.disabled = has && idx >= len - 1;
+  if (pos) pos.textContent = t._plPos;
+  if (badge) badge.textContent = badgeText(t);
+}
+
+function onTilePlaying(uid, pl) {
+  plErrCount[uid] = 0; // видео пошло — сбрасываем счётчик ошибок подряд
+  const t = state.tiles.find(x => x.uid === uid);
+  if (!t || !t.list) return;
+  updatePlNav(uid);
+  // пропорции текущего видео плейлиста (могут отличаться от предыдущего)
+  const cur = currentVideoId(pl);
+  if (cur && cur !== t._plVid) {
+    t._plVid = cur;
+    detectAspect(cur, t);
+  }
+}
+
+function onTileEnded(uid) {
+  const t = state.tiles.find(x => x.uid === uid);
+  if (!t || !t.list) return;
+  // завершение из-за ошибок (nextVideo на последнем видео) — показываем заглушку,
+  // обычное же окончание плейлиста (без 🔁) оставляем как есть
+  if ((plErrCount[uid] || 0) > 0) {
+    plErrCount[uid] = 0;
+    showVideoError(uid, 100, true);
+  }
+}
+
+// Ошибка плеера: у плейлиста — автопропуск недоступного видео,
+// но не дольше 3 подряд, иначе это бесконечный цикл — показываем заглушку
+function handleTileError(uid, code) {
+  const t = state.tiles.find(x => x.uid === uid);
+  if (t && t.list && (plErrCount[uid] || 0) < 3) {
+    plErrCount[uid] = (plErrCount[uid] || 0) + 1;
+    const pl = players[uid];
+    try {
+      if (pl) {
+        pl.nextVideo();
+        if (!state.allPaused) pl.playVideo(); // чтобы пропущенное видео пошло, а не висело в CUED
+        toast("Видео из плейлиста недоступно (" + code + ") — пропускаю", 2500);
+        return;
+      }
+    } catch (e) {}
+  }
+  plErrCount[uid] = 0;
+  showVideoError(uid, code, !!(t && t.list));
 }
 
 /* ---------- Скелетон загрузки ---------- */
@@ -709,7 +993,7 @@ const YT_ERRORS = {
   101: "Владелец запретил встраивание",
   150: "Владелец запретил встраивание"
 };
-function showVideoError(uid, code) {
+function showVideoError(uid, code, isPlaylist) {
   const el = grid.querySelector('[data-uid="' + uid + '"]');
   const video = el && el.querySelector(".video");
   if (!video) return;
@@ -720,17 +1004,31 @@ function showVideoError(uid, code) {
   box.className = "video-error";
   const title = document.createElement("div");
   title.className = "err-title";
-  title.textContent = "⚠ Видео недоступно (" + code + ")";
+  title.textContent = isPlaylist ? "⚠ Плейлист недоступен" : "⚠ Видео недоступно (" + code + ")";
   const desc = document.createElement("div");
-  desc.textContent = YT_ERRORS[code] || "Неизвестная ошибка плеера";
+  desc.textContent = isPlaylist
+    ? "Ни одно видео не воспроизводится: приватный или удалённый плейлист, запрет встраивания ("
+      + code + ") либо ограничение по региону."
+    : (YT_ERRORS[code] || "Неизвестная ошибка плеера");
   const name = document.createElement("div");
   name.className = "err-name";
-  name.textContent = tile ? (tile.label || tile.id) : "";
+  name.textContent = tile ? (tile.label || tile.list || tile.id) : "";
+  const row = document.createElement("div");
+  row.style.display = "flex";
+  row.style.gap = "8px";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "↻ Повторить";
+  retry.addEventListener("click", () => {
+    plErrCount[uid] = 0;
+    rebuildIframe(el, tile || { uid });
+  });
   const del = document.createElement("button");
   del.type = "button";
   del.textContent = "✕ Удалить тайл";
   del.addEventListener("click", () => removeTile(uid));
-  box.append(title, desc, name, del);
+  row.append(retry, del);
+  box.append(title, desc, name, row);
   video.appendChild(box);
 }
 
@@ -777,10 +1075,10 @@ function buildTile(t) {
   skel.textContent = "Загрузка…";
   video.appendChild(skel);
 
-  // Бейдж лейбла поверх видео (виден при включённых «Подписях»)
+  // Бейдж лейбла поверх видео (виден при включённых «Подписях»); у плейлиста + позиция
   const badge = document.createElement("div");
   badge.className = "badge";
-  badge.textContent = t.label || "";
+  badge.textContent = badgeText(t);
   video.appendChild(badge);
 
   el.appendChild(video);
@@ -808,7 +1106,7 @@ function buildTile(t) {
   label.addEventListener("input", () => {
     t.label = label.value;
     iframe.title = label.value;
-    badge.textContent = label.value;
+    badge.textContent = badgeText(t);
     persistLocal();
   });
   strip.appendChild(label);
@@ -850,18 +1148,20 @@ function buildTile(t) {
   });
   strip.appendChild(aspSel);
 
-  // Старт
-  const startIn = document.createElement("input");
-  startIn.type = "number";
-  startIn.min = "0";
-  startIn.value = t.start || 0;
-  startIn.title = "Секунда старта (применится после пересоздания тайла)";
-  startIn.addEventListener("change", () => {
-    t.start = Math.max(0, parseInt(startIn.value) || 0);
-    rebuildIframe(el, t);
-    persistLocal();
-  });
-  strip.appendChild(startIn);
+  // Старт (у плейлиста бессмыслен — он всегда играет с первого видео)
+  if (!t.list) {
+    const startIn = document.createElement("input");
+    startIn.type = "number";
+    startIn.min = "0";
+    startIn.value = t.start || 0;
+    startIn.title = "Секунда старта (применится после пересоздания тайла)";
+    startIn.addEventListener("change", () => {
+      t.start = Math.max(0, parseInt(startIn.value) || 0);
+      rebuildIframe(el, t);
+      persistLocal();
+    });
+    strip.appendChild(startIn);
+  }
 
   // Звук
   const muteBtn = document.createElement("button");
@@ -887,10 +1187,54 @@ function buildTile(t) {
   loopBtn.addEventListener("click", () => {
     t.loop = !t.loop;
     loopBtn.classList.toggle("on", t.loop);
-    rebuildIframe(el, t);
+    const pl = players[t.uid];
+    if (t.list && pl) {
+      try { pl.setLoop(t.loop); } catch (e) {} // цикл плейлиста — сразу, без пересоздания iframe
+    } else {
+      rebuildIframe(el, t);
+    }
     persistLocal();
   });
   strip.appendChild(loopBtn);
+
+  // Плейлист: листание видео и позиция в плейлисте
+  if (t.list) {
+    const jump = dir => {
+      if (needApi()) return;
+      const pl = players[t.uid];
+      if (!pl) return;
+      try {
+        dir < 0 ? pl.previousVideo() : pl.nextVideo();
+        // после API-перехода автозапуск не держится — ролик застревает в CUED
+        if (!state.allPaused) pl.playVideo();
+      } catch (e) {}
+    };
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.textContent = "⏮";
+    prevBtn.className = "pl-prev";
+    prevBtn.title = FILE_MODE
+      ? "Предыдущее видео плейлиста (недоступно на file:// — нужен start.bat)"
+      : "Предыдущее видео плейлиста";
+    prevBtn.addEventListener("click", () => jump(-1));
+    strip.appendChild(prevBtn);
+
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.textContent = "⏭";
+    nextBtn.className = "pl-next";
+    nextBtn.title = FILE_MODE
+      ? "Следующее видео плейлиста (недоступно на file:// — нужен start.bat)"
+      : "Следующее видео плейлиста";
+    nextBtn.addEventListener("click", () => jump(1));
+    strip.appendChild(nextBtn);
+
+    const pos = document.createElement("span");
+    pos.className = "pl-pos";
+    pos.textContent = t._plPos || "";
+    pos.title = "Позиция в плейлисте";
+    strip.appendChild(pos);
+  }
 
   // Герой — главное видео раскладки «Герой»
   const heroBtn = document.createElement("button");
@@ -921,6 +1265,7 @@ function rebuildIframe(tileEl, t) {
   if (!video) return;
   const old = video.querySelector("iframe");
   if (players[t.uid]) { try { players[t.uid].destroy(); } catch (x) {} delete players[t.uid]; }
+  plErrCount[t.uid] = 0; // новая попытка — обнуляем защиту от бесконечного пропуска
   // новый iframe = новая попытка: убираем старую ошибку и снова показываем скелетон
   const err = video.querySelector(".video-error");
   if (err) err.remove();
@@ -948,7 +1293,7 @@ function removeTile(uid) {
   applyLayout(); // в раскладке «Герой» кольцо ужимается под новое число тайлов
   requestFitScale();
   persistLocal();
-  toast("Тайл удалён" + (t ? " «" + (t.label || t.id) + "»" : ""));
+  toast("Тайл удалён" + (t ? " «" + (t.label || t.list || t.id) + "»" : ""));
 }
 
 /* =============== DnD: вставка до/после тайла под курсором =============== */
@@ -1060,7 +1405,7 @@ gridWrap.addEventListener("drop", e => {
     requestFitScale();
     persistLocal();
     syncHeroStars();
-    toast("⭐ Главное видео: " + (state.tiles[from] ? (state.tiles[from].label || state.tiles[from].id) : ""));
+    toast("⭐ Главное видео: " + (state.tiles[from] ? (state.tiles[from].label || state.tiles[from].list || state.tiles[from].id) : ""));
     return;
   }
 
@@ -1273,7 +1618,7 @@ function setHero(uid) {
   applyLayout();
   persistLocal();
   const t = state.tiles.find(x => x.uid === uid);
-  toast("⭐ Главное видео: " + (t ? (t.label || t.id) : ""));
+  toast("⭐ Главное видео: " + (t ? (t.label || t.list || t.id) : ""));
 }
 
 document.getElementById("layoutSel").addEventListener("change", e => {
@@ -1431,7 +1776,21 @@ function toggleMaximize(uid) {
 }
 
 /* =============== Add video =============== */
+function pushTile(t, aspectId) {
+  state.tiles.push(t);
+  const el = buildTile(t);
+  el.style.order = state.tiles.length - 1;
+  grid.appendChild(el); // только новый тайл, остальные не трогаем
+  updateEmpty();
+  applyLayout();
+  if (apiReady) attachPlayers();
+  persistLocal();
+  if (aspectId) detectAspect(aspectId, t); // async: обновит пропорции, когда узнает
+}
+
 function addVideo(raw) {
+  const L = extractList(raw);
+  if (L) { openPlaylistModal(L); return; } // плейлист-ссылка — на выбор через модалку
   const id = extractId(raw);
   if (!id) { toast("Не удалось распознать ссылку YouTube"); return; }
   if (state.tiles.length >= 15) { toast("Максимум 15 тайлов"); return; }
@@ -1446,16 +1805,161 @@ function addVideo(raw) {
     aspect: "auto",
     detected: null
   };
-  state.tiles.push(t);
-  const el = buildTile(t);
-  el.style.order = state.tiles.length - 1;
-  grid.appendChild(el); // только новый тайл, остальные не трогаем
-  updateEmpty();
-  applyLayout();
-  if (apiReady) attachPlayers();
-  persistLocal();
-  detectAspect(id, t); // async: обновит пропорции, когда узнает
+  pushTile(t, id);
   toast("Видео добавлено: " + id);
+}
+
+// Плейлист-тайл: одно окно, проигрывающее плейлист по очереди (всегда с первого видео)
+function addPlaylistTile(list, title) {
+  if (!list) return;
+  if (state.tiles.length >= 15) { toast("Максимум 15 тайлов"); return; }
+  const t = {
+    uid: "t" + (uidCounter++) + "_" + Date.now().toString(36),
+    id: "", // поле только для обычных видео; у плейлиста старт всегда с начала
+    list,
+    label: title || "",
+    start: 0,
+    loop: false,
+    muted: true,
+    rate: 1,
+    aspect: "auto",
+    detected: null
+  };
+  pushTile(t, null);
+  toast("Плейлист добавлен" + (title ? ": «" + title + "»" : ": " + list));
+}
+
+/* ---------- Модалка выбора (нативный <dialog>) ---------- */
+const plDialog = document.getElementById("playlistDialog");
+let plCtx = null; // {list, videoId, title, ids, network, pure} — на время открытого окна
+const plEls = {
+  title: document.getElementById("plTitle"),
+  info: document.getElementById("plInfo"),
+  url: document.getElementById("plUrl"),
+  several: document.getElementById("plSeveral"), // блок: разделитель + «сколько» + итог + кнопка
+  count: document.getElementById("plCount"),
+  note: document.getElementById("plNote"),
+  btnVideo: document.getElementById("plBtnVideo"),
+  btnPlaylist: document.getElementById("plBtnPlaylist"),
+  btnSeveral: document.getElementById("plBtnSeveral")
+};
+
+function openPlaylistModal(info) {
+  if (state.tiles.length >= 15) { toast("Максимум 15 тайлов"); return; }
+  const pure = !info.videoId; // прямая ссылка на плейлист — конкретного видео в ней нет
+  plCtx = { list: info.list, videoId: info.videoId || null, title: "", ids: null, network: false, pure };
+
+  plEls.title.textContent = pure ? "Ссылка на плейлист" : "Ссылка на видео из плейлиста";
+  plEls.url.textContent = "list=" + info.list;
+  plEls.info.className = "dlg-info";
+  plEls.info.textContent = pure
+    ? "«Вставить как плейлист» — одно окно, которое проиграет плейлист по очереди. «Вставить несколько» — отдельные окна на каждое видео."
+    : "Ссылка ведёт на видео внутри плейлиста:";
+  plEls.btnVideo.hidden = pure;
+  plEls.btnPlaylist.textContent = pure ? "Вставить как плейлист" : "Вставить весь плейлист";
+  plEls.several.hidden = !pure; // секция «Вставить несколько» — только для чистых плейлист-ссылок
+  plEls.note.textContent = pure ? "Загружаю состав плейлиста…" : "";
+  plEls.count.value = "5";
+  plEls.btnPlaylist.disabled = false;
+  plEls.btnSeveral.disabled = true; // включим, когда получим состав
+
+  plDialog.returnValue = "";
+  plDialog.showModal();
+  // showModal сам ставит фокус на первую кнопку — тогда тот же Enter, открывший
+  // диалог, достанется ей и мгновенно сделает submit. Перехватываем фокус на диалоге,
+  // на кнопку переносим после завершения keydown-задачи.
+  plDialog.focus();
+  requestAnimationFrame(() => { if (plDialog.open) plEls.btnPlaylist.focus(); });
+
+  fetchPlaylistInfo(info.list, pure).then(r => {
+    if (!plCtx || plCtx.list !== info.list) return; // окно уже закрыли
+    if (r.title) plCtx.title = r.title;
+
+    if (r.unavailable) {
+      // прав нет / плейлист не существует — и «весь плейлист» не заиграет
+      plEls.info.className = "dlg-info err";
+      plEls.info.textContent = "Плейлист недоступен: приватный, удалён или закрыт правами.";
+      plEls.btnPlaylist.disabled = true; // эмбед такого плейлиста не работает
+      if (pure) plEls.note.textContent = "Работает только отмена — вставлять нечего";
+      return;
+    }
+
+    if (!pure) {
+      // конкретное видео вставляется всегда; заголовок плейлиста — отдельной строкой
+      if (r.title)
+        plEls.info.textContent = "Ссылка ведёт на видео внутри плейлиста:\n«" + r.title + "»";
+      return;
+    }
+
+    if (r.ids && r.ids.length) {
+      plCtx.ids = r.ids;
+      plEls.btnSeveral.disabled = false;
+      if (r.title) plEls.info.textContent = "«" + r.title + "» — " + r.ids.length + " видео.";
+      const free = Math.max(0, 15 - state.tiles.length);
+      const max = Math.min(r.ids.length, free);
+      plEls.count.max = String(Math.max(1, max));
+      if (max < 1) {
+        plEls.btnSeveral.disabled = true;
+        plEls.note.textContent = "Нет свободных мест (лимит 15 тайлов)";
+      } else {
+        plEls.count.value = String(Math.min(parseInt(plEls.count.value, 10) || 5, max));
+        plEls.note.textContent = "Вставить можно: " + max + " из " + r.ids.length + " (лимит 15 тайлов)";
+      }
+    } else if (r.api) {
+      // IFrame API не загрузился: «несколько» недоступно, сам плейлист — можно
+      plEls.info.className = "dlg-info err";
+      plEls.info.textContent = "YouTube IFrame API не загрузился — состав узнать не удалось.";
+      plEls.note.textContent = "«Вставить как плейлист» работает; «несколько» — на localhost (start.bat)";
+    } else {
+      // сеть/таймаут — не значит «нет прав»: пробуем вставить как есть
+      plCtx.network = true;
+      plEls.info.className = "dlg-info err";
+      plEls.info.textContent = "Не удалось проверить плейлист (сеть) — если он приватный, плеер покажет ошибку.";
+      plEls.note.textContent = "Состав получить не удалось — «несколько» недоступно";
+    }
+  });
+}
+
+// Отправка формы (method="dialog") = выбор действия. Esc закрывает окно без submit = отмена.
+// NB: слушаем submit, а не close: close в некоторых оболочках (Electron) не диспатчится.
+plDialog.querySelector("form").addEventListener("submit", e => {
+  const act = (e.submitter && e.submitter.value) || "";
+  const ctx = plCtx;
+  plCtx = null;
+  if (!ctx) return;
+  if (act === "video" && ctx.videoId) addVideo(ctx.videoId);
+  else if (act === "playlist") addPlaylistTile(ctx.list, ctx.title);
+  else if (act === "several") insertSeveralFromPlaylist(ctx);
+});
+// Клик мимо окна (по подложке ::backdrop) закрывает модалку — как Esc.
+// Клики по содержимому приходят с другим target, а клик по паддингу самого диалога
+// отсекаем проверкой координат (он должен быть за пределами прямоугольника окна).
+plDialog.addEventListener("click", e => {
+  if (e.target !== plDialog) return;
+  const r = plDialog.getBoundingClientRect();
+  const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  if (outside) plDialog.close();
+});
+// Enter в поле количества = «вставить несколько» (не первая кнопка формы)
+plEls.count.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (!plEls.btnSeveral.disabled) plEls.btnSeveral.click();
+  }
+});
+
+// «Вставить несколько из плейлиста»: первые N видео — отдельными обычными тайлами
+function insertSeveralFromPlaylist(ctx) {
+  if (!ctx.ids || !ctx.ids.length) { toast("Не удалось получить видео плейлиста"); return; }
+  const n = Math.max(1, parseInt(plEls.count.value, 10) || 1);
+  let added = 0, skipped = 0;
+  for (const id of ctx.ids.slice(0, n)) {
+    if (state.tiles.length >= 15) { skipped++; continue; }
+    if (state.tiles.some(t => t.id === id)) { skipped++; continue; }
+    addVideo(id);
+    added++;
+  }
+  toast("Добавлено: " + added + (skipped ? ", пропущено: " + skipped : ""), 3000);
 }
 
 document.getElementById("btnAdd").addEventListener("click", () => {
@@ -1473,9 +1977,11 @@ document.getElementById("addUrl").addEventListener("keydown", e => {
 document.getElementById("addUrl").addEventListener("paste", e => {
   const text = ((e.clipboardData || window.clipboardData).getData("text") || "").trim();
   const parts = text.split(/[\s,;]+/).filter(Boolean);
-  if (parts.length < 2) return; // одна ссылка — обычная вставка
+  if (parts.length < 2) return; // одна ссылка — обычная вставка (плейлист откроет модалку)
   const ids = parts.map(extractId).filter(Boolean);
-  if (ids.length < 2) return;
+  // Массово добавляем только обычные видео; чистые плейлист-ссылки пропускаем
+  const plCount = parts.filter(p => extractList(p) && !extractId(p)).length;
+  if (ids.length + plCount < 2) return;
   e.preventDefault();
   let added = 0, skipped = 0;
   for (const id of ids) {
@@ -1484,7 +1990,9 @@ document.getElementById("addUrl").addEventListener("paste", e => {
     addVideo(id);
     added++;
   }
-  toast("Добавлено: " + added + (skipped ? ", пропущено: " + skipped : ""), 3000);
+  toast("Добавлено: " + added
+    + (skipped ? ", пропущено: " + skipped : "")
+    + (plCount ? " · плейлистов пропущено: " + plCount : ""), 3500);
 });
 
 /* =============== Save / Load / URL =============== */
@@ -1507,7 +2015,8 @@ function sceneToJSON() {
       rate: t.rate || 1,
       aspect: t.aspect || "auto",
       detected: t.detected || null,
-      hero: t.hero || undefined
+      hero: t.hero || undefined,
+      list: t.list || undefined
     }))
   };
 }
@@ -1515,11 +2024,12 @@ function sceneToJSON() {
 function applyScene(sc) {
   if (!sc || !Array.isArray(sc.tiles)) { toast("Неверный формат файла сцены"); return false; }
   state.tiles = sc.tiles
-    .filter(t => t && t.id)
+    .filter(t => t && (t.id || t.list))
     .slice(0, 15)
     .map(t => ({
       uid: "t" + (uidCounter++) + "_" + Date.now().toString(36) + Math.floor(Math.random() * 1e4),
-      id: String(t.id).slice(0, 20),
+      id: String(t.id || "").slice(0, 20),
+      list: (typeof t.list === "string" && /^[A-Za-z0-9_-]{10,64}$/.test(t.list)) ? t.list : null,
       label: String(t.label || ""),
       start: Math.max(0, parseInt(t.start) || 0),
       loop: !!t.loop,
@@ -1549,8 +2059,8 @@ function applyScene(sc) {
   syncFitAllBtn();
   syncControls();
   render();
-  // определяем пропорции только для тех, у кого их нет в сцене
-  state.tiles.forEach(t => { if (!t.detected) detectAspect(t.id, t); });
+  // определяем пропорции только для тех, у кого их нет в сцене (у плейлиста — при старте видео)
+  state.tiles.forEach(t => { if (!t.detected && t.id) detectAspect(t.id, t); });
   toast("Сцена загружена (" + state.tiles.length + " тайлов)");
   return true;
 }
@@ -1656,6 +2166,7 @@ document.getElementById("obsExit").addEventListener("click", () => setObsMode(fa
 document.addEventListener("keydown", e => {
   const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "";
   if (tag === "input" || tag === "select" || tag === "textarea") return; // не мешаем вводу
+  if (plDialog.open) return; // модалка плейлиста: Esc/Enter/Space обрабатывает сам <dialog>
   if (e.key === "Escape") {
     if (maximizedUid) { toggleMaximize(maximizedUid); return; }
     if (document.body.classList.contains("obs")) setObsMode(false);
